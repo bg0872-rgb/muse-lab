@@ -82,6 +82,7 @@ canvas{display:block;width:100%;border-radius:6px;background:#0b0e13}
 #scope{height:380px}
 #spec,#bands,#nfOrb,#nfTrace,#histChart{height:240px}
 #toneScope{height:170px}
+#impChart{height:220px}
 #histDetail{height:220px}
 .hint{color:var(--dim);font-size:11px;margin:8px 0 0}
 .big{font-family:var(--mono);font-size:30px;font-weight:600;line-height:1.1}
@@ -502,6 +503,16 @@ tbody tr.sel{background:#1f2a33}
         <tbody id="impRows"></tbody>
       </table>
       <p class="hint" id="impVerdict"></p>
+      <div id="impReport"></div>
+      <h3 style="margin-top:16px">Session timeline &mdash; 30 s steps, stimulus shaded</h3>
+      <canvas id="impChart" height="220"></canvas>
+      <div class="legend">
+        <span><i style="background:#4fd1c5"></i>alpha %</span>
+        <span><i style="background:#e3b341"></i>theta %</span>
+        <span><i style="background:#f778ba"></i>beta %</span>
+        <span><i style="background:#3fb950"></i>SNR@&Delta; frontal (own scale, dashed)</span>
+      </div>
+      <p class="hint" id="impHighs"></p>
       <div class="row" style="margin-top:10px">
         <button id="impSave" class="primary">Save to History</button>
       </div>
@@ -2739,21 +2750,29 @@ function impBandRel(psd, df){
 function impAnalyzeSeg(parsed, s, e, f0){
   const rej = {thresh: settings.artifact, frac: 0.02};
   const out = {mins: (e-s)/FS/60, snrF:null, snrT:null, dwpliF:null, dwpliT:null,
-               alpha:null, theta:null, beta:null, artPct:null, err:null};
+               alpha:null, theta:null, beta:null, delta:null, gamma:null,
+               totalPower:null, artPct:null, err:null};
   const seg = c => parsed.ch[c].subarray(s, e);
   try{
-    const snr = {}, bands = {delta:0,theta:0,alpha:0,beta:0,gamma:0};
+    const snr = {};
+    const abs = {delta:0, theta:0, alpha:0, beta:0, gamma:0};   // µV², absolute
     let nSeg = 0, nRej = 0;
     for(const c of CHANS){
       const r = XA.welchPSD(seg(c), 4096, {reject:rej});
       snr[c] = XA.peakSNR(r.psd, r.df, f0).snr;
-      const rel = impBandRel(r.psd, r.df);
-      for(const b of BAND_NAMES) bands[b] += rel[b]/4;
+      for(const b of BAND_NAMES){
+        const [lo,hi] = BANDS[b];
+        let p = 0;
+        for(let k=Math.ceil(lo/r.df); k<hi/r.df; k++) p += r.psd[k];
+        abs[b] += p*r.df;
+      }
       nSeg += r.nSeg; nRej += r.nRej;
     }
+    const tot = abs.delta + abs.theta + abs.alpha + abs.beta + abs.gamma;
     out.snrF = (snr.af7 + snr.af8)/2;
     out.snrT = (snr.tp9 + snr.tp10)/2;
-    out.alpha = bands.alpha; out.theta = bands.theta; out.beta = bands.beta;
+    for(const b of BAND_NAMES) out[b] = tot > 1e-12 ? 100*abs[b]/tot : 0;
+    out.totalPower = tot/4;                                     // mean µV² per channel
     out.artPct = 100*nRej/Math.max(1, nSeg+nRej);
   }catch(err){ out.err = String(err.message||err); }
   for(const p of [['dwpliF','af7','af8'], ['dwpliT','tp9','tp10']]){
@@ -2763,6 +2782,157 @@ function impAnalyzeSeg(parsed, s, e, f0){
     }catch(e){ /* segment too short/dirty for wPLI — leave null */ }
   }
   return out;
+}
+
+/* Timeline: relative band powers + frontal SNR@Δ in 30 s windows across
+   the whole recording — the "highs and lows" view. */
+function impTimeline(parsed, f0){
+  const W = 30*FS;
+  const rej = {thresh: settings.artifact, frac: 0.02};
+  const out = [];
+  for(let s=0; s+W<=parsed.nRows; s+=W){
+    const bands = {delta:0,theta:0,alpha:0,beta:0,gamma:0};
+    let snrF = 0, nF = 0, ok = 0;
+    for(const c of CHANS){
+      try{
+        const r = XA.welchPSD(parsed.ch[c].subarray(s, s+W), 4096, {reject:rej});
+        const rel = impBandRel(r.psd, r.df);
+        for(const b of BAND_NAMES) bands[b] += rel[b];
+        if(c==='af7' || c==='af8'){ snrF += XA.peakSNR(r.psd, r.df, f0).snr; nF++; }
+        ok++;
+      }catch(e){ /* window fully rejected on this channel */ }
+    }
+    if(ok) out.push({t: s/FS + 15, alpha:bands.alpha/ok, theta:bands.theta/ok, beta:bands.beta/ok,
+                     snrF: nF ? snrF/nF : null});
+  }
+  return out;
+}
+
+let impLastTimeline = null, impLastSlices = null;
+function drawImpChart(){
+  const cv = $('#impChart'); if(!cv.clientWidth || !impLastTimeline || impLastTimeline.length < 2) return;
+  const {ctx,w,h} = fitCanvas(cv);
+  const tl = impLastTimeline;
+  const pad = {l:40, r:8, t:10, b:20}, pw = w-pad.l-pad.r, ph = h-pad.t-pad.b;
+  const tMax = tl[tl.length-1].t + 15;
+  const xOf = t => pad.l + (t/tMax)*pw;
+  let hi = 10;
+  for(const p of tl) hi = Math.max(hi, p.alpha, p.theta, p.beta);
+  hi *= 1.15;
+  const yOf = v => pad.t + ph - (v/hi)*ph;
+
+  // stimulus shading
+  if(impLastSlices){
+    const st = impLastSlices.find(s => s.name === 'stimulus');
+    if(st){
+      ctx.fillStyle = 'rgba(79,209,197,0.07)';
+      ctx.fillRect(xOf(st.s/FS), pad.t, xOf(st.e/FS)-xOf(st.s/FS), ph);
+    }
+  }
+  ctx.strokeStyle='#232b35'; ctx.fillStyle='#5b6675'; ctx.font='9px ui-monospace,monospace';
+  for(let g=0; g<=4; g++){
+    const v = hi*g/4, y = yOf(v);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
+    ctx.fillText(v.toFixed(0)+'%', 4, y+3);
+  }
+  const line = (key, color)=>{
+    ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.beginPath();
+    tl.forEach((p,i)=>{ const x=xOf(p.t), y=yOf(p[key]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    ctx.stroke();
+  };
+  line('theta', '#e3b341');
+  line('beta',  '#f778ba');
+  line('alpha', '#4fd1c5');
+  // SNR on its own scale, dashed
+  const snrPts = tl.filter(p => p.snrF != null);
+  if(snrPts.length > 1){
+    const sHi = Math.max(3, ...snrPts.map(p=>p.snrF))*1.15;
+    ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 1.4; ctx.setLineDash([4,3]); ctx.beginPath();
+    snrPts.forEach((p,i)=>{ const x=xOf(p.t), y=pad.t+ph-(p.snrF/sHi)*ph; i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  // alpha high / low dots
+  const aHi = tl.reduce((a,b)=> b.alpha>a.alpha?b:a);
+  const aLo = tl.reduce((a,b)=> b.alpha<a.alpha?b:a);
+  for(const [p,lab] of [[aHi,'high'],[aLo,'low']]){
+    ctx.fillStyle = '#4fd1c5';
+    ctx.beginPath(); ctx.arc(xOf(p.t), yOf(p.alpha), 4, 0, 7); ctx.fill();
+    ctx.fillStyle = '#d7dee8'; ctx.font = '10px ui-monospace,monospace';
+    ctx.fillText(`${lab} ${fmtTime(p.t)}`, clamp(xOf(p.t)-24, pad.l, w-70), yOf(p.alpha)-8);
+  }
+  ctx.fillStyle='#5b6675'; ctx.font='9px ui-monospace,monospace';
+  ctx.fillText('0:00', pad.l, h-6);
+  const endLab = fmtTime(tMax);
+  ctx.fillText(endLab, w-pad.r-ctx.measureText(endLab).width, h-6);
+}
+
+/* Every difference we can measure, in ordinary words. Graded language,
+   honest about noise. */
+function impReport(phases, f0){
+  const st = phases.stimulus, ba = phases.baseline, po = phases.post;
+  if(!st || !ba) return '';
+  const li = [];
+  const bandName = {
+    delta:'Deep-sleep rhythm (delta)', theta:'Drowsy rhythm (theta)',
+    alpha:'Relaxed rhythm (alpha)', beta:'Alert rhythm (beta)', gamma:'Fast focus rhythm (gamma)'
+  };
+  const grade = d => {
+    const a = Math.abs(d);
+    return a < 1 ? 'essentially unchanged'
+         : a < 3 ? (d>0 ? 'slightly up' : 'slightly down')
+         : a < 6 ? (d>0 ? 'clearly up' : 'clearly down')
+         : (d>0 ? 'strongly up' : 'strongly down');
+  };
+  const pts = d => Math.abs(d) >= 1 ? ` (${d>0?'+':''}${d.toFixed(1)} points)` : '';
+
+  for(const b of ['alpha','theta','beta','delta','gamma']){
+    if(st[b] == null || ba[b] == null) continue;
+    const d = st[b] - ba[b];
+    li.push(`<b>${bandName[b]}</b>: ${ba[b].toFixed(1)}% before → ${st[b].toFixed(1)}% during the sound — ${grade(d)}${pts(d)}.`);
+  }
+  if(st.snrF != null && ba.snrF != null){
+    const w = st.snrF < 2 ? 'no real sign of the brain locking onto the beat'
+            : st.snrF < 4 ? 'a weak trace of the brain following the beat'
+            : st.snrF < 10 ? 'a clear signature of the brain following the beat'
+            : 'a strong, unmistakable lock onto the beat';
+    li.push(`<b>Rhythm following at ${f0} Hz</b>: brainwave at the beat frequency ran ${st.snrF.toFixed(1)}× above background during the sound (vs ${ba.snrF.toFixed(1)}× in silence) — ${w}. Forehead ${st.snrF.toFixed(1)}×, ears ${st.snrT != null ? st.snrT.toFixed(1)+'×' : '—'}.`);
+  }
+  if(st.dwpliF != null && ba.dwpliF != null){
+    const d = st.dwpliF - ba.dwpliF;
+    li.push(`<b>Left–right synchrony (front)</b>: ${ba.dwpliF.toFixed(2)} before → ${st.dwpliF.toFixed(2)} during — ${Math.abs(d) < 0.15 ? 'within this number’s normal wobble (it wanders ±0.15 on its own)' : 'a shift larger than its usual wobble — worth watching across sessions'}.`);
+  }
+  if(st.totalPower != null && ba.totalPower != null && ba.totalPower > 1e-9){
+    const pct = 100*(st.totalPower - ba.totalPower)/ba.totalPower;
+    li.push(`<b>Overall signal energy</b>: ${pct>0?'+':''}${pct.toFixed(0)}% during the sound — ${Math.abs(pct) < 15 ? 'ordinary variation' : 'a sizeable change; can mean genuine arousal shift, but also jaw tension or movement'}.`);
+  }
+  if(po && po.alpha != null && ba.alpha != null){
+    const d = po.alpha - ba.alpha;
+    li.push(`<b>After-effect</b>: two minutes after the sound stopped, the relaxed rhythm was ${grade(d)} versus before the session${pts(d)} — ${Math.abs(d) < 1 ? 'no measurable trace left behind' : 'the state change outlived the sound itself'}.`);
+  }
+  if(st.artPct != null){
+    li.push(`<b>Data quality</b>: ${st.artPct.toFixed(0)}% of the sound period was discarded for blinks or movement${st.artPct > 30 ? ' — that’s high; sitting stiller or re-wetting the ear sensors will sharpen everything above' : ' — good'}.`);
+  }
+  if(!li.length) return '';
+  return `<ul style="margin:8px 0 0 18px;line-height:1.75;font-size:13px">${li.map(x=>`<li>${x}</li>`).join('')}</ul>
+    <p class="hint" style="margin-top:8px">These are rules of thumb, not verdicts — every number here wobbles from
+    session to session. Trust patterns that repeat across sessions (History tab) over any single line above.</p>`;
+}
+
+function impHighsText(tl){
+  if(!tl || tl.length < 2) return '';
+  const best = k => tl.reduce((a,b)=> b[k]>a[k]?b:a);
+  const worst = k => tl.reduce((a,b)=> b[k]<a[k]?b:a);
+  const parts = [
+    `α (relaxed) high ${best('alpha').alpha.toFixed(0)}% at ${fmtTime(best('alpha').t)}, low ${worst('alpha').alpha.toFixed(0)}% at ${fmtTime(worst('alpha').t)}`,
+    `θ (drowsy) high ${best('theta').theta.toFixed(0)}% at ${fmtTime(best('theta').t)}`,
+    `β (alert) high ${best('beta').beta.toFixed(0)}% at ${fmtTime(best('beta').t)}`,
+  ];
+  const snrPts = tl.filter(p => p.snrF != null);
+  if(snrPts.length){
+    const bs = snrPts.reduce((a,b)=> b.snrF>a.snrF?b:a);
+    parts.push(`rhythm-following peaked at SNR ${bs.snrF.toFixed(1)} (${fmtTime(bs.t)})`);
+  }
+  return parts.join(' · ');
 }
 
 async function impAnalyze(){
@@ -2808,6 +2978,14 @@ async function impAnalyze(){
         <td>${p.artPct==null?'—':p.artPct.toFixed(0)+'%'}</td></tr>`;
     }).join('');
 
+    status('building timeline…');
+    await new Promise(r => setTimeout(r, 30));
+    const timeline = impTimeline(impParsed, f0);
+    impResult.timeline = timeline;
+    impLastTimeline = timeline;
+    impLastSlices = slices;
+    $('#impHighs').textContent = impHighsText(timeline);
+
     let verdict = '';
     const st = phases.stimulus, ba = phases.baseline;
     if(st && ba && st.snrF != null && ba.snrF != null){
@@ -2818,7 +2996,9 @@ async function impAnalyze(){
       verdict = 'Whole-file analysis — for before/during/after comparisons, record 2 quiet minutes on each side of the sound, or press Mind Monitor markers at sound start and stop.';
     }
     $('#impVerdict').textContent = verdict;
+    $('#impReport').innerHTML = impReport(phases, f0);
     $('#impResCard').style.display = 'block';
+    requestAnimationFrame(drawImpChart);   // canvas has layout only once the card is visible
     status(`done — ${impParsed.nRows.toLocaleString()} samples at ${impParsed.fs.toFixed(1)} Hz, ${impParsed.markers.length} markers${impParsed.badRows?`, ${impParsed.badRows} malformed rows skipped`:''}`);
   }catch(err){
     status('');
@@ -3196,6 +3376,7 @@ $('#histRows').onclick = async ev=>{
 
 window.addEventListener('resize', ()=>{
   if(activeView==='hist'){ drawHistChart(); drawHistDetail(); }
+  if(activeView==='imp') drawImpChart();
 });
 
 // Boot
