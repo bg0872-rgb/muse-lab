@@ -127,6 +127,7 @@ tbody tr.sel{background:#1f2a33}
   <div class="tab active" data-v="live">Live</div>
   <div class="tab" data-v="nf">Neurofeedback</div>
   <div class="tab" data-v="exp">Experiment</div>
+  <div class="tab" data-v="imp">Import</div>
   <div class="tab" data-v="hist">History</div>
   <div class="tab" data-v="set">Settings</div>
 </div>
@@ -388,6 +389,51 @@ tbody tr.sel{background:#1f2a33}
     </div>
   </div>
 
+  <!-- ============ IMPORT ============ -->
+  <div class="view" id="v-imp">
+    <div class="card">
+      <h3>Import a Mind Monitor recording</h3>
+      <div class="row">
+        <div><label>CSV file</label><input type="file" id="impFile" accept=".csv,text/csv,application/zip"></div>
+        <div><label>Beat / pulse &Delta; (Hz)</label><input type="number" id="impF0" value="10" min="0.5" max="40" step="0.5" style="width:90px"></div>
+        <div>
+          <label>Sound used</label>
+          <select id="impMode">
+            <option value="binaural">binaural</option>
+            <option value="monaural">monaural</option>
+            <option value="isochronic">isochronic</option>
+            <option value="silence">no sound / other</option>
+          </select>
+        </div>
+        <div>
+          <label>Phases</label>
+          <select id="impPhase">
+            <option value="proto" selected>Entrainment Lab: first 2 min baseline, last 2 min post</option>
+            <option value="markers">Mind Monitor markers: 1st = sound on, 2nd = sound off</option>
+            <option value="whole">Whole file is one phase</option>
+          </select>
+        </div>
+        <div><label>&nbsp;</label><button id="impGo" class="primary" disabled>Analyze</button></div>
+      </div>
+      <p class="hint">Workflow: connect the headband in <b>Mind Monitor</b> (its native connection is the reliable one),
+        start its recording, run the sound session, stop, and open the exported CSV here. Set &Delta; to the beat the
+        sound used &mdash; Entrainment Lab shows it big on its screen. The file is read on this device only; nothing
+        is uploaded. Mind Monitor must have RAW data enabled in its recording settings (it is by default).</p>
+      <div id="impStatus" class="hint"></div>
+    </div>
+    <div class="card" id="impResCard" style="display:none">
+      <h3>Result</h3>
+      <table>
+        <thead><tr><th>Phase</th><th>Min</th><th>SNR@&Delta; frontal</th><th>SNR@&Delta; temporal</th><th>dwPLI F</th><th>dwPLI T</th><th>&alpha;%</th><th>&theta;%</th><th>&beta;%</th><th>Rejected</th></tr></thead>
+        <tbody id="impRows"></tbody>
+      </table>
+      <p class="hint" id="impVerdict"></p>
+      <div class="row" style="margin-top:10px">
+        <button id="impSave" class="primary">Save to History</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ HISTORY ============ -->
   <div class="view" id="v-hist">
     <div class="card">
@@ -396,12 +442,25 @@ tbody tr.sel{background:#1f2a33}
         <div>
           <label>Plot</label>
           <select id="histMetric">
-            <option value="pctReward" selected>% time in reward</option>
-            <option value="meanMetric">Mean metric</option>
+            <option value="pctReward" selected>% time in reward (neurofeedback)</option>
+            <option value="meanMetric">Mean metric (neurofeedback)</option>
             <option value="alpha">Mean relative alpha</option>
             <option value="theta">Mean relative theta</option>
             <option value="beta">Mean relative beta</option>
             <option value="artifactPct">% artifacts</option>
+            <option value="impSnrF">Imports: SNR@&Delta; during sound (frontal)</option>
+            <option value="impSnrT">Imports: SNR@&Delta; during sound (temporal)</option>
+            <option value="impDwpliF">Imports: dwPLI frontal during sound</option>
+            <option value="impAlphaShift">Imports: &alpha;% change (sound vs baseline)</option>
+          </select>
+        </div>
+        <div>
+          <label>Group</label>
+          <select id="histRange">
+            <option value="all" selected>Every session</option>
+            <option value="day">Daily</option>
+            <option value="week">Weekly</option>
+            <option value="month">Monthly</option>
           </select>
         </div>
         <button id="btnExportAll">Export all sessions (JSON)</button>
@@ -842,7 +901,8 @@ const settings = Object.assign({
   nfNum:'alpha', nfDen:'total', nfChan:'af7,af8', nfDir:'up',
   nfK:0.5, nfTau:2, nfSound:'tone', nfVol:0.35,
   exF0:4, exCarrier:200, exVol:0.25, exBlock:180, exRest:15, exReps:6,
-  exConds:'binaural,isochronic,pure,silence', exBlind:true
+  exConds:'binaural,isochronic,pure,silence', exBlind:true,
+  impF0:10
 }, JSON.parse(localStorage.getItem('museLab.settings')||'{}'));
 
 function saveSettings(){ localStorage.setItem('museLab.settings', JSON.stringify(settings)); }
@@ -1849,37 +1909,87 @@ let selectedSession = null;
 async function renderHistory(){
   sessions = await dbAll();
   const tb = $('#histRows');
-  tb.innerHTML = sessions.map((s,i)=>`
+  tb.innerHTML = sessions.map((s,i)=>{
+    const cells = s.type === 'import'
+      ? `<td>${s.impSnrF==null?'—':'SNR '+s.impSnrF.toFixed(1)}</td>
+         <td>${s.impDwpliF==null?'—':'dwPLI '+s.impDwpliF.toFixed(2)}</td>
+         <td><b>${s.impAlphaShift==null?'—':(s.impAlphaShift>0?'+':'')+s.impAlphaShift.toFixed(1)+'% α'}</b></td>`
+      : `<td>${s.meanMetric.toFixed(3)}</td>
+         <td>${s.threshold===null?'—':s.threshold.toFixed(3)}</td>
+         <td><b>${s.pctReward.toFixed(0)}%</b></td>`;
+    return `
     <tr data-i="${i}">
       <td>${new Date(s.date).toLocaleString()}</td>
       <td>${fmtTime(s.duration)}</td>
       <td style="font-family:var(--mono);font-size:11px">${s.protocol}</td>
-      <td>${s.meanMetric.toFixed(3)}</td>
-      <td>${s.threshold===null?'—':s.threshold.toFixed(3)}</td>
-      <td><b>${s.pctReward.toFixed(0)}%</b></td>
-      <td>${s.artifactPct.toFixed(0)}%</td>
+      ${cells}
+      <td>${(s.artifactPct||0).toFixed(0)}%</td>
       <td><button data-del="${s.id}" style="padding:2px 8px;font-size:11px">del</button></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
   $('#histEmpty').style.display = sessions.length ? 'none' : 'block';
   drawHistChart();
+}
+
+// Bucket start for daily/weekly/monthly grouping (weeks start Monday).
+function histBucket(dateMs, mode){
+  const d = new Date(dateMs);
+  if(mode === 'month') return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+  if(mode === 'week'){
+    const t = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    t.setDate(t.getDate() - ((t.getDay()+6)%7));
+    return t.getTime();
+  }
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();   // day
 }
 
 function drawHistChart(){
   const cv = $('#histChart'); if(!cv.clientWidth) return;
   const {ctx,w,h} = fitCanvas(cv);
   const key = $('#histMetric').value;
-  if(sessions.length < 1){
+  const range = $('#histRange') ? $('#histRange').value : 'all';
+
+  // Only sessions that actually carry this metric (NF metrics skip imports and vice versa).
+  const pts = sessions
+    .map(s => ({date:s.date, v:s[key]}))
+    .filter(p => typeof p.v === 'number' && isFinite(p.v));
+
+  if(!pts.length){
     ctx.fillStyle='#5b6675'; ctx.font='12px system-ui';
-    ctx.fillText('Record a neurofeedback session and it will appear here.', 12, h/2);
+    ctx.fillText(sessions.length
+      ? 'No sessions carry this metric yet — pick another, or import/record more.'
+      : 'Record or import a session and it will appear here.', 12, h/2);
     return;
   }
+
+  // Aggregate into buckets (mean per bucket), or keep per-session points.
+  let series;
+  if(range === 'all'){
+    series = pts.map((p,i)=>({x:i, label:null, v:p.v, n:1}));
+  }else{
+    const by = new Map();
+    for(const p of pts){
+      const k = histBucket(p.date, range);
+      if(!by.has(k)) by.set(k, {sum:0, n:0});
+      const b = by.get(k); b.sum += p.v; b.n++;
+    }
+    const keys = [...by.keys()].sort((a,b)=>a-b);
+    const fmtB = t => {
+      const d = new Date(t);
+      return range === 'month'
+        ? d.toLocaleDateString(undefined, {month:'short', year:'2-digit'})
+        : d.toLocaleDateString(undefined, {month:'numeric', day:'numeric'});
+    };
+    series = keys.map((k,i)=>({x:i, label:fmtB(k), v:by.get(k).sum/by.get(k).n, n:by.get(k).n}));
+  }
+
   const pad={l:46,r:10,t:12,b:26}, pw=w-pad.l-pad.r, ph=h-pad.t-pad.b;
-  const vals = sessions.map(s=>s[key]||0);
+  const vals = series.map(p=>p.v);
   let lo=Math.min(...vals), hi=Math.max(...vals);
-  if(hi-lo < 1e-6){ hi=lo+1; lo=Math.max(0,lo-1); }
-  const pad2=(hi-lo)*0.15; lo-=pad2; hi+=pad2;
+  if(hi-lo < 1e-6){ hi=lo+1; lo=lo-1; }
+  const m=(hi-lo)*0.15; lo-=m; hi+=m;
   const yOf = v => pad.t+ph-((v-lo)/(hi-lo))*ph;
-  const xOf = i => sessions.length===1 ? pad.l+pw/2 : pad.l+(i/(sessions.length-1))*pw;
+  const xOf = i => series.length===1 ? pad.l+pw/2 : pad.l+(i/(series.length-1))*pw;
 
   ctx.strokeStyle='#232b35'; ctx.fillStyle='#5b6675'; ctx.font='9px ui-monospace,monospace';
   for(let g=0;g<=4;g++){
@@ -1887,8 +1997,7 @@ function drawHistChart(){
     ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
     ctx.fillText(v.toFixed(1), 4, y+3);
   }
-  // linear trend line
-  if(sessions.length>2){
+  if(series.length>2){
     const n=vals.length; let sx=0,sy=0,sxy=0,sxx=0;
     vals.forEach((v,i)=>{ sx+=i; sy+=v; sxy+=i*v; sxx+=i*i; });
     const slope=(n*sxy-sx*sy)/Math.max(1e-9,(n*sxx-sx*sx)), icept=(sy-slope*sx)/n;
@@ -1897,16 +2006,26 @@ function drawHistChart(){
     ctx.setLineDash([]);
   }
   ctx.strokeStyle='#4fd1c5'; ctx.lineWidth=2; ctx.beginPath();
-  vals.forEach((v,i)=>{ const x=xOf(i),y=yOf(v); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+  series.forEach((p,i)=>{ const x=xOf(i),y=yOf(p.v); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
   ctx.stroke();
   ctx.fillStyle='#4fd1c5';
-  vals.forEach((v,i)=>{ ctx.beginPath(); ctx.arc(xOf(i),yOf(v),3.5,0,7); ctx.fill(); });
+  series.forEach((p,i)=>{ ctx.beginPath(); ctx.arc(xOf(i),yOf(p.v), p.n>1?4.5:3.5, 0,7); ctx.fill(); });
 
+  // x labels: bucket names (or first/last dates in per-session mode)
   ctx.fillStyle='#5b6675'; ctx.font='9px ui-monospace,monospace';
-  ctx.fillText(new Date(sessions[0].date).toLocaleDateString(), pad.l, h-8);
-  if(sessions.length>1){
-    const t = new Date(sessions[sessions.length-1].date).toLocaleDateString();
-    ctx.fillText(t, w-pad.r-ctx.measureText(t).width, h-8);
+  if(range === 'all'){
+    ctx.fillText(new Date(pts[0].date).toLocaleDateString(), pad.l, h-8);
+    if(pts.length>1){
+      const t = new Date(pts[pts.length-1].date).toLocaleDateString();
+      ctx.fillText(t, w-pad.r-ctx.measureText(t).width, h-8);
+    }
+  }else{
+    const step = Math.max(1, Math.ceil(series.length/8));
+    series.forEach((p,i)=>{
+      if(i % step) return;
+      const t = p.label + (p.n>1 ? ` (${p.n})` : '');
+      ctx.fillText(t, clamp(xOf(i)-ctx.measureText(t).width/2, pad.l, w-pad.r-ctx.measureText(t).width), h-8);
+    });
   }
 }
 
@@ -2256,6 +2375,220 @@ function exExportJson(){
 }
 
 /* ============================================================
+   Mind Monitor CSV import
+   The recording arrives from Mind Monitor's native (reliable)
+   Bluetooth; this path only parses and analyses. Streaming
+   line parser: a 20-minute raw recording is ~100 MB of text,
+   so the file is never held in memory whole — only the four
+   RAW channels (16 bytes/sample) survive parsing.
+   ============================================================ */
+let impParsed = null, impResult = null;
+
+async function impParse(file, onStatus){
+  const reader = file.stream().getReader();
+  const dec = new TextDecoder();
+  let carry = '', header = null;
+  let iTS = -1, iEl = -1;
+  const iRaw = [-1,-1,-1,-1];
+  const CHUNKN = 65536;
+  const chunks = [];
+  let cur = null, nRows = 0, badRows = 0;
+  let firstTS = null, lastTS = null, bytes = 0;
+  const markers = [];
+
+  function pushRow(v0,v1,v2,v3){
+    if(!cur || cur.n >= CHUNKN){ cur = {a:new Float32Array(CHUNKN*4), n:0}; chunks.push(cur); }
+    const o = cur.n*4;
+    cur.a[o]=v0; cur.a[o+1]=v1; cur.a[o+2]=v2; cur.a[o+3]=v3;
+    cur.n++; nRows++;
+  }
+  function doLine(line){
+    if(!line) return;
+    if(!header){
+      header = line.split(',');
+      header.forEach((h,i)=>{
+        h = h.trim();
+        if(h === 'TimeStamp') iTS = i;
+        else if(h === 'RAW_TP9') iRaw[0] = i;
+        else if(h === 'RAW_AF7') iRaw[1] = i;
+        else if(h === 'RAW_AF8') iRaw[2] = i;
+        else if(h === 'RAW_TP10') iRaw[3] = i;
+        else if(h === 'Elements') iEl = i;
+      });
+      if(iRaw[0] < 0) throw new Error('No RAW_TP9 column. In Mind Monitor settings, make sure recordings include RAW data.');
+      return;
+    }
+    const parts = line.split(',');
+    if(iEl >= 0){
+      const el = parts[iEl];
+      if(el && el.indexOf('Marker') >= 0) markers.push({n:nRows, label:el.trim()});
+    }
+    const r0 = parts[iRaw[0]];
+    if(r0 !== '' && r0 !== undefined){
+      const v0 = +r0, v1 = +parts[iRaw[1]], v2 = +parts[iRaw[2]], v3 = +parts[iRaw[3]];
+      if(isFinite(v0) && isFinite(v1) && isFinite(v2) && isFinite(v3)){
+        pushRow(v0,v1,v2,v3);
+        if(iTS >= 0 && parts[iTS]){ if(!firstTS) firstTS = parts[iTS]; lastTS = parts[iTS]; }
+      }else badRows++;
+    }
+  }
+
+  for(;;){
+    const {done, value} = await reader.read();
+    if(done) break;
+    bytes += value.byteLength;
+    carry += dec.decode(value, {stream:true});
+    let nl;
+    while((nl = carry.indexOf('\n')) >= 0){
+      doLine(carry.slice(0, nl).replace(/\r$/, ''));
+      carry = carry.slice(nl+1);
+    }
+    if(onStatus) onStatus(`reading… ${(bytes/1048576).toFixed(1)} MB, ${nRows.toLocaleString()} samples`);
+    await new Promise(r => setTimeout(r, 0));   // let the UI breathe
+  }
+  doLine(carry.trim());
+  if(nRows < FS*60) throw new Error(`Only ${(nRows/FS).toFixed(0)} s of raw EEG in this file — need at least a minute.`);
+
+  const ch = {};
+  for(let c=0;c<4;c++){
+    const a = new Float32Array(nRows); let o = 0;
+    for(const k of chunks) for(let i=0;i<k.n;i++) a[o++] = k.a[i*4+c];
+    ch[CHANS[c]] = a;
+  }
+  let fs = FS, t0 = Date.now(), dur = nRows/FS;
+  if(firstTS && lastTS){
+    const t1 = Date.parse(firstTS.replace(' ','T')), t2 = Date.parse(lastTS.replace(' ','T'));
+    if(isFinite(t1) && isFinite(t2) && t2 > t1){ dur = (t2-t1)/1000; fs = nRows/dur; t0 = t1; }
+  }
+  return {ch, nRows, fs, markers, t0, dur, badRows, name:file.name};
+}
+
+function impSlices(parsed, mode){
+  const N = parsed.nRows, B = Math.round(120*FS);
+  if(mode === 'whole') return [{name:'whole', s:0, e:N}];
+  if(mode === 'markers'){
+    if(parsed.markers.length < 2) throw new Error(`Only ${parsed.markers.length} marker(s) in the file — the marker option needs 2.`);
+    const m1 = parsed.markers[0].n, m2 = parsed.markers[1].n;
+    return [{name:'baseline', s:0, e:m1}, {name:'stimulus', s:m1, e:m2}, {name:'post', s:m2, e:N}];
+  }
+  if(N < B*2 + FS*90) throw new Error('Too short for the 2+2 minute protocol — choose another phase option.');
+  return [{name:'baseline', s:0, e:B}, {name:'stimulus', s:B, e:N-B}, {name:'post', s:N-B, e:N}];
+}
+
+function impBandRel(psd, df){
+  const out = {}; let tot = 0;
+  for(const b of BAND_NAMES){
+    const [lo,hi] = BANDS[b];
+    let s = 0;
+    for(let k=Math.ceil(lo/df); k<hi/df; k++) s += psd[k];
+    out[b] = s; tot += s;
+  }
+  for(const b of BAND_NAMES) out[b] = tot > 1e-12 ? 100*out[b]/tot : 0;
+  return out;
+}
+
+function impAnalyzeSeg(parsed, s, e, f0){
+  const rej = {thresh: settings.artifact, frac: 0.02};
+  const out = {mins: (e-s)/FS/60, snrF:null, snrT:null, dwpliF:null, dwpliT:null,
+               alpha:null, theta:null, beta:null, artPct:null, err:null};
+  const seg = c => parsed.ch[c].subarray(s, e);
+  try{
+    const snr = {}, bands = {delta:0,theta:0,alpha:0,beta:0,gamma:0};
+    let nSeg = 0, nRej = 0;
+    for(const c of CHANS){
+      const r = XA.welchPSD(seg(c), 4096, {reject:rej});
+      snr[c] = XA.peakSNR(r.psd, r.df, f0).snr;
+      const rel = impBandRel(r.psd, r.df);
+      for(const b of BAND_NAMES) bands[b] += rel[b]/4;
+      nSeg += r.nSeg; nRej += r.nRej;
+    }
+    out.snrF = (snr.af7 + snr.af8)/2;
+    out.snrT = (snr.tp9 + snr.tp10)/2;
+    out.alpha = bands.alpha; out.theta = bands.theta; out.beta = bands.beta;
+    out.artPct = 100*nRej/Math.max(1, nSeg+nRej);
+  }catch(err){ out.err = String(err.message||err); }
+  for(const p of [['dwpliF','af7','af8'], ['dwpliT','tp9','tp10']]){
+    try{
+      const c2 = XA.connectivity(seg(p[1]), seg(p[2]), 4096, {reject:rej});
+      out[p[0]] = c2.dwpli[Math.round(f0/c2.df)];
+    }catch(e){ /* segment too short/dirty for wPLI — leave null */ }
+  }
+  return out;
+}
+
+async function impAnalyze(){
+  const fileEl = $('#impFile');
+  const file = fileEl.files && fileEl.files[0];
+  if(!file) return;
+  if(typeof XA === 'undefined'){ toast('Analysis module missing — serve the whole folder.', true); return; }
+  const status = m => { $('#impStatus').textContent = m; };
+  $('#impGo').disabled = true;
+  $('#impResCard').style.display = 'none';
+  try{
+    if(!impParsed || impParsed.name !== file.name || impParsed._size !== file.size){
+      impParsed = await impParse(file, status);
+      impParsed._size = file.size;
+    }
+    const f0 = settings.impF0 || parseFloat($('#impF0').value) || 10;
+    const mode = $('#impMode').value;
+    if(Math.abs(impParsed.fs - FS) > 8)
+      toast(`Heads-up: the file's sample rate looks like ${impParsed.fs.toFixed(1)} Hz, not 256 — frequencies may be slightly off.`, true);
+    status('analysing…');
+    await new Promise(r => setTimeout(r, 30));
+    const slices = impSlices(impParsed, $('#impPhase').value);
+    const phases = {};
+    for(const sl of slices) phases[sl.name] = impAnalyzeSeg(impParsed, sl.s, sl.e, f0);
+
+    impResult = {
+      type:'import', date: impParsed.t0, duration: impParsed.dur,
+      protocol: `MM ${mode} Δ${f0}Hz`, f0, mode, srcName: impParsed.name,
+      fs: +impParsed.fs.toFixed(2), phases,
+      impSnrF: phases.stimulus ? phases.stimulus.snrF : (phases.whole ? phases.whole.snrF : null),
+      impSnrT: phases.stimulus ? phases.stimulus.snrT : (phases.whole ? phases.whole.snrT : null),
+      impDwpliF: phases.stimulus ? phases.stimulus.dwpliF : (phases.whole ? phases.whole.dwpliF : null),
+      impAlphaShift: (phases.stimulus && phases.baseline && phases.stimulus.alpha!=null && phases.baseline.alpha!=null)
+        ? +(phases.stimulus.alpha - phases.baseline.alpha).toFixed(2) : null,
+      artifactPct: phases.stimulus ? phases.stimulus.artPct : (phases.whole ? phases.whole.artPct : 0),
+    };
+
+    const f = v => v==null ? '—' : (typeof v==='number' ? (Math.abs(v)<100 ? v.toFixed(v<10?2:1) : v.toFixed(0)) : v);
+    $('#impRows').innerHTML = slices.map(sl=>{
+      const p = phases[sl.name];
+      return `<tr><td>${sl.name}</td><td>${p.mins.toFixed(1)}</td><td>${f(p.snrF)}</td><td>${f(p.snrT)}</td>
+        <td>${f(p.dwpliF)}</td><td>${f(p.dwpliT)}</td><td>${f(p.alpha)}</td><td>${f(p.theta)}</td><td>${f(p.beta)}</td>
+        <td>${p.artPct==null?'—':p.artPct.toFixed(0)+'%'}</td></tr>`;
+    }).join('');
+
+    let verdict = '';
+    const st = phases.stimulus, ba = phases.baseline;
+    if(st && ba && st.snrF != null && ba.snrF != null){
+      verdict = `While the sound played, the frontal response at ${f0} Hz measured SNR ${st.snrF.toFixed(1)} ` +
+        `against ${ba.snrF.toFixed(1)} in silence. Roughly: near 1 = nothing there; 3+ with a quiet baseline = ` +
+        `your brain followed the rhythm. One session is a hint — the chart across sessions is the answer.`;
+    }else if(phases.whole){
+      verdict = 'Whole-file analysis — for before/during/after comparisons, record 2 quiet minutes on each side of the sound, or press Mind Monitor markers at sound start and stop.';
+    }
+    $('#impVerdict').textContent = verdict;
+    $('#impResCard').style.display = 'block';
+    status(`done — ${impParsed.nRows.toLocaleString()} samples at ${impParsed.fs.toFixed(1)} Hz, ${impParsed.markers.length} markers${impParsed.badRows?`, ${impParsed.badRows} malformed rows skipped`:''}`);
+  }catch(err){
+    status('');
+    toast('Import failed: ' + (err && err.message ? err.message : err), true);
+  }finally{
+    $('#impGo').disabled = !(fileEl.files && fileEl.files[0]);
+  }
+}
+
+async function impSaveToHistory(){
+  if(!impResult) return;
+  await dbPut(impResult);
+  toast('Saved. It will appear in History and in the trend charts.');
+  impResult = null;
+  $('#impResCard').style.display = 'none';
+  renderHistory();
+}
+
+/* ============================================================
    Guided run — the experiment as single-step screens.
    Reuses the normal machinery (STIM, connect, exStartRun);
    this is only choreography on top.
@@ -2528,8 +2861,20 @@ bindSetting('#setArt','artifact', null, true);
 bindSetting('#setScale','scale', null, true);
 bindSetting('#setPreset','preset');
 
+// Import
+bindSetting('#impF0','impF0', null, true);
+$('#impFile').addEventListener('change', ()=>{
+  impParsed = null; impResult = null;
+  $('#impResCard').style.display = 'none';
+  $('#impStatus').textContent = '';
+  $('#impGo').disabled = !($('#impFile').files && $('#impFile').files[0]);
+});
+$('#impGo').onclick = impAnalyze;
+$('#impSave').onclick = impSaveToHistory;
+
 // History
 $('#histMetric').onchange = drawHistChart;
+$('#histRange').onchange = drawHistChart;
 // Two-tap confirm instead of confirm(): modal dialogs are silently blocked
 // inside the claude.ai artifact sandbox, which would make this button dead there.
 let clearArmed = 0;
@@ -2566,8 +2911,9 @@ $('#histRows').onclick = async ev=>{
   document.querySelectorAll('#histRows tr').forEach(r=>r.classList.remove('sel'));
   tr.classList.add('sel');
   selectedSession = sessions[Number(tr.dataset.i)];
-  $('#histDetailCard').style.display='block';
-  drawHistDetail();
+  const hasSeries = selectedSession && selectedSession.series && selectedSession.series.length;
+  $('#histDetailCard').style.display = hasSeries ? 'block' : 'none';
+  if(hasSeries) drawHistDetail();
 };
 
 window.addEventListener('resize', ()=>{
