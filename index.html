@@ -102,6 +102,15 @@ tbody tr.sel{background:#1f2a33}
   padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:14px;
 }
 .banner.err{background:#2b1d1d;border-color:var(--bad);color:#ffa198}
+
+/* ---- guided run overlay ---- */
+#guide{position:fixed;inset:0;background:rgba(10,13,18,0.96);z-index:50;display:none;align-items:center;justify-content:center;padding:20px}
+#guideBox{max-width:540px;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:28px}
+#guideBox h2{margin:6px 0 12px;font-size:22px}
+#guideBox p{color:var(--dim);font-size:14px;line-height:1.65;margin:0}
+#guideLive{font-family:var(--mono);font-size:16px;margin:14px 0 0;min-height:22px}
+#guideBtns{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
+#guideBtns button{padding:12px 20px;font-size:15px}
 </style>
 
 
@@ -273,6 +282,15 @@ tbody tr.sel{background:#1f2a33}
 
   <!-- ============ EXPERIMENT ============ -->
   <div class="view" id="v-exp">
+    <div class="card">
+      <h3>Guided run &mdash; easy mode</h3>
+      <div class="row">
+        <button id="exGuideBtn" class="primary">Start guided run</button>
+        <p class="hint" style="margin:0;flex:1;min-width:220px">One step at a time: ears on, sound check, headband,
+          signal check, then the session runs itself and tells you when it's done. Use this instead of the
+          controls below whenever you just want to run it.</p>
+      </div>
+    </div>
     <div class="card">
       <h3>Stimulus</h3>
       <div class="row">
@@ -463,6 +481,16 @@ tbody tr.sel{background:#1f2a33}
         and cannot diagnose anything.
       </p>
     </div>
+  </div>
+</div>
+
+<div id="guide">
+  <div id="guideBox">
+    <div id="guideStep" class="hint"></div>
+    <h2 id="guideTitle"></h2>
+    <p id="guideText"></p>
+    <div id="guideLive"></div>
+    <div id="guideBtns"></div>
   </div>
 </div>
 
@@ -2227,6 +2255,141 @@ function exExportJson(){
 }
 
 /* ============================================================
+   Guided run — the experiment as single-step screens.
+   Reuses the normal machinery (STIM, connect, exStartRun);
+   this is only choreography on top.
+   ============================================================ */
+const GUIDE = {on:false, timer:null};
+
+function guideStop(){
+  GUIDE.on = false;
+  clearInterval(GUIDE.timer); GUIDE.timer = null;
+  $('#guide').style.display = 'none';
+}
+
+function guideRender(stepLabel, title, text, btns){
+  GUIDE.on = true;
+  clearInterval(GUIDE.timer); GUIDE.timer = null;
+  $('#guide').style.display = 'flex';
+  $('#guideStep').textContent = stepLabel;
+  $('#guideTitle').textContent = title;
+  $('#guideText').innerHTML = text;
+  $('#guideLive').innerHTML = '';
+  const box = $('#guideBtns');
+  box.innerHTML = '';
+  for(const b of btns){
+    const el = document.createElement('button');
+    el.textContent = b.label;
+    if(b.kind) el.className = b.kind;
+    el.onclick = b.fn;
+    box.appendChild(el);
+  }
+}
+
+function guideStart(){
+  guideRender('Step 1 of 6', 'Ears on',
+    'Put on the earbuds or headphones you’ll wear for the whole session. Wired is best. Set a comfortable, modest volume.',
+    [{label:'Done — next', kind:'primary', fn:guideSound},
+     {label:'Cancel', fn:guideStop}]);
+}
+
+function guideSound(){
+  guideRender('Step 2 of 6', 'Sound check',
+    'Tap Play. You should hear a LOW tone in your LEFT ear only, then a HIGH tone in your RIGHT ear only.',
+    [{label:'▶ Play', kind:'primary', fn:()=>STIM.stereoCheck()},
+     {label:'Heard it correctly — next', fn:guideHeadband},
+     {label:'Both tones in both ears', fn:guideSoundFail},
+     {label:'Cancel', fn:guideStop}]);
+}
+
+function guideSoundFail(){
+  guideRender('Sound problem', 'Fix the audio first',
+    'Both ears hearing both tones means left and right are merged, and the binaural condition won’t be real. ' +
+    'Usual causes: a speaker instead of earbuds, Bluetooth earbuds in mono mode, or the phone’s ' +
+    '“mono audio” accessibility switch. Fix it and check again — or continue knowing only the ' +
+    'isochronic and silence results will mean anything.',
+    [{label:'Try the check again', kind:'primary', fn:guideSound},
+     {label:'Continue anyway', fn:guideHeadband},
+     {label:'Cancel', fn:guideStop}]);
+}
+
+function guideHeadband(){
+  guideRender('Step 3 of 6', 'Headband on',
+    '<b>Force-close the official Muse app first</b> — it steals the headband. Then: slightly wet the two ' +
+    'ear sensors, put the band on with hair out from underneath, and turn it on so its light is blinking.',
+    [{label:'Ready — connect', kind:'primary', fn:guideConnect},
+     {label:'Cancel', fn:guideStop}]);
+}
+
+function guideConnect(){
+  if(connected || simTimer){ guideSignal(); return; }
+  guideRender('Step 4 of 6', 'Connect the headband',
+    'Tap the button and pick the device called <b>Muse-…</b> in the popup. If the popup stays empty: ' +
+    'turn the band off and on again, and make sure the Muse app is really closed.',
+    [{label:'Open connection popup', kind:'primary', fn:()=>connect()},
+     {label:'Cancel', fn:guideStop}]);
+  GUIDE.timer = setInterval(()=>{
+    if(!GUIDE.on){ clearInterval(GUIDE.timer); return; }
+    if(connected) guideSignal();
+  }, 500);
+}
+
+function guideSignal(){
+  guideRender('Step 5 of 6', 'Signal check',
+    'Sit still and wait for every sensor to turn green (good) or at least yellow (fair). ' +
+    'If one stays red: press the band gently against it, or re-wet the ear sensors.',
+    [{label:'Looks good — next', kind:'primary', fn:guideReady},
+     {label:'Cancel', fn:guideStop}]);
+  const upd = ()=>{
+    if(!GUIDE.on) return;
+    $('#guideLive').innerHTML = CHANS.map(c=>{
+      const q = state[c].quality;
+      const col = q==='good' ? 'var(--good)' : q==='fair' ? 'var(--warn)' : 'var(--bad)';
+      return `<span style="color:${col}">● ${CHAN_LABEL[c]} ${q}</span>`;
+    }).join(' &nbsp; ');
+  };
+  upd();
+  GUIDE.timer = setInterval(upd, 500);
+}
+
+function guideReady(){
+  const conds = Math.max(1, EX_CONDS.filter(c=>settings.exConds.split(',').includes(c)).length);
+  const mins = n => Math.ceil(n*conds*(settings.exBlock + settings.exRest + 2)/60);
+  guideRender('Step 6 of 6', 'How long a session?',
+    'From here the app does everything: sounds start and stop by themselves, silent blocks are part of the plan, ' +
+    'and results stay hidden until the end. Sit comfortably, close your eyes, and stay still until it says done.',
+    [{label:`Short session (~${mins(2)} min)`, kind:'primary', fn:()=>guideRun(2)},
+     {label:`Full session (~${mins(6)} min)`, fn:()=>guideRun(6)},
+     {label:'Cancel', fn:guideStop}]);
+}
+
+function guideRun(reps){
+  settings.exReps = reps; saveSettings();
+  const el = document.getElementById('exReps'); if(el) el.value = reps;
+  exStartRun();
+  if(!EXP.running){ guideStop(); return; }   // start refused; the toast says why
+  guideRender('Session running', 'Eyes closed. Relax.',
+    'Blocks play in random order while the headband records. This screen counts them down and will tell you when it’s finished.',
+    [{label:'Abort session', kind:'danger', fn:()=>{ exEndRun(true); guideStop(); }}]);
+  GUIDE.timer = setInterval(()=>{
+    if(!GUIDE.on){ clearInterval(GUIDE.timer); return; }
+    if(!EXP.running){ guideDone(); return; }
+    const left = EXP.phase==='capturing'
+      ? fmtTime(Math.max(0, (EXP.capN-EXP.capI)/FS)) + ' left in block'
+      : EXP.phase;
+    $('#guideLive').innerHTML = `Block ${Math.min(EXP.cur+1, EXP.seq.length)} of ${EXP.seq.length} — ${left}`;
+  }, 500);
+}
+
+function guideDone(){
+  guideRender('Finished', 'Session complete',
+    'Take the headband off. The results table is now unmasked — the question is whether the <b>binaural</b> rows ' +
+    'beat the <b>silence</b> rows, and the <b>isochronic</b> rows are the proof the rig itself works. ' +
+    'The export buttons save your data.',
+    [{label:'See results', kind:'primary', fn:guideStop}]);
+}
+
+/* ============================================================
    Wiring
    ============================================================ */
 function bindSetting(sel, key, cb, isNum){
@@ -2343,6 +2506,7 @@ document.querySelectorAll('.exPrev').forEach(b => b.onclick = ()=>{ if(!EXP.runn
 $('#exPrevStop').onclick = ()=>{ if(!EXP.running) STIM.stop(); };
 $('#exCsvEvents').onclick = exExportEvents;
 $('#exJson').onclick = exExportJson;
+$('#exGuideBtn').onclick = guideStart;
 
 // Settings
 bindSetting('#setNotch','notch', rebuildFilters, true);
@@ -2436,11 +2600,9 @@ window.addEventListener('resize', ()=>{
     c.use('downloads').then(dl => { dl ? saveVia(dl, name, text) : orig(name, text, type); })
                       .catch(()=> orig(name, text, type));
   };
-  // Make the viewer limitation visible up front, not only on failure.
-  if(!navigator.bluetooth || !navigator.permissions){ /* toast already handles missing API */ }
   try{
     document.getElementById('btnConnect').title =
-      'Bluetooth is blocked on the claude.ai copy — connect from the Muse Lab desktop shortcut on the PC.';
+      'Bluetooth is blocked on the claude.ai copy — use the GitHub link or the PC desktop shortcut to connect.';
   }catch(e){}
 })();
 </script>
@@ -2455,6 +2617,7 @@ window.addEventListener('resize', ()=>{
   #scope{height:260px}
   .big{font-size:22px}
   th,td{padding:6px;font-size:11px}
+  #guideBox{padding:20px}
 }
 </style>
 </body>
