@@ -330,6 +330,7 @@ tbody tr.sel{background:#1f2a33}
         <div><label>Rest between blocks (s)</label><input type="number" id="exRest" value="15" min="5" max="120" step="5" style="width:90px"></div>
         <div><label>Repeats per condition</label><input type="number" id="exReps" value="6" min="1" max="12" step="1" style="width:90px"></div>
         <div><label><input type="checkbox" id="exBlind" checked> Blind &mdash; hide conditions and numbers until the run ends</label></div>
+        <div><label>&nbsp;</label><button id="exDefaults">Reset to the standard Gateway test</button></div>
       </div>
       <p class="hint">Block order is shuffled at start. 4 conditions &times; 6 repeats &times; ~3.3 min &asymp; 80 minutes;
         run a pilot with 2 repeats first. Eyes closed, seated, still. Minimum 90 s per block so wPLI has &ge; 8 clean
@@ -2069,7 +2070,7 @@ function exRecClick(){ EXP._recCtl = true; $('#btnRec').click(); EXP._recCtl = f
 function exSetRunUI(on){
   $('#exStart').disabled = on;
   $('#exAbort').disabled = !on;
-  for(const id of ['exF0','exCarrier','exBlock','exRest','exReps','exBlind',
+  for(const id of ['exF0','exCarrier','exBlock','exRest','exReps','exBlind','exDefaults',
                    'exC-binaural','exC-isochronic','exC-pure','exC-silence','exStereo','exPrevStop']){
     const el = document.getElementById(id);
     if(el) el.disabled = on;
@@ -2507,6 +2508,18 @@ $('#exPrevStop').onclick = ()=>{ if(!EXP.running) STIM.stop(); };
 $('#exCsvEvents').onclick = exExportEvents;
 $('#exJson').onclick = exExportJson;
 $('#exGuideBtn').onclick = guideStart;
+const EX_DEFAULTS = {exF0:4, exCarrier:200, exVol:0.25, exBlock:180, exRest:15, exReps:6,
+                     exConds:'binaural,isochronic,pure,silence', exBlind:true};
+$('#exDefaults').onclick = ()=>{
+  Object.assign(settings, EX_DEFAULTS);
+  saveSettings();
+  for(const [sel,key] of [['#exF0','exF0'],['#exCarrier','exCarrier'],['#exVol','exVol'],
+                          ['#exBlock','exBlock'],['#exRest','exRest'],['#exReps','exReps']])
+    $(sel).value = settings[key];
+  for(const c of EX_CONDS) document.getElementById('exC-'+c).checked = true;
+  $('#exBlind').checked = true;
+  toast('Back to the standard Gateway test: 4 Hz beat, 3-minute blocks, 6 of each condition, blinded.');
+};
 
 // Settings
 bindSetting('#setNotch','notch', rebuildFilters, true);
