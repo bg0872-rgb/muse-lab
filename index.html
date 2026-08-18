@@ -81,6 +81,7 @@ label{color:var(--dim);font-size:12px}
 canvas{display:block;width:100%;border-radius:6px;background:#0b0e13}
 #scope{height:380px}
 #spec,#bands,#nfOrb,#nfTrace,#histChart{height:240px}
+#toneScope{height:170px}
 #histDetail{height:220px}
 .hint{color:var(--dim);font-size:11px;margin:8px 0 0}
 .big{font-family:var(--mono);font-size:30px;font-weight:600;line-height:1.1}
@@ -127,6 +128,7 @@ tbody tr.sel{background:#1f2a33}
   <div class="tab active" data-v="live">Live</div>
   <div class="tab" data-v="nf">Neurofeedback</div>
   <div class="tab" data-v="exp">Experiment</div>
+  <div class="tab" data-v="tone">Tones</div>
   <div class="tab" data-v="imp">Import</div>
   <div class="tab" data-v="hist">History</div>
   <div class="tab" data-v="set">Settings</div>
@@ -386,6 +388,78 @@ tbody tr.sel{background:#1f2a33}
       <p class="hint">With Simulate running and this ON, a run must show elevated dwPLI and SNR on binaural and
         isochronic rows and nothing on pure/silence. With it OFF, every row must be null. Passing both is the
         difference between &ldquo;no effect&rdquo; and &ldquo;broken pipeline&rdquo;.</p>
+    </div>
+  </div>
+
+  <!-- ============ TONES (port of the user's Entrainment Lab) ============ -->
+  <div class="view" id="v-tone">
+    <div class="card">
+      <h3>Tone lab &mdash; free play</h3>
+      <canvas id="toneScope" height="170"></canvas>
+      <div class="legend">
+        <span><i style="background:#e3b341"></i>left / tone</span>
+        <span><i style="background:#7c9cff"></i>right tone</span>
+        <span><i style="background:#3fb950"></i>rhythm envelope</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Mode</h3>
+      <div class="row">
+        <button class="toneMode" data-m="binaural">Binaural &mdash; headphones only</button>
+        <button class="toneMode" data-m="monaural">Monaural &mdash; speaker or phones</button>
+        <button class="toneMode" data-m="isochronic">Isochronic &mdash; speaker or phones</button>
+      </div>
+      <p class="hint" id="toneModeDesc"></p>
+    </div>
+
+    <div class="card">
+      <h3>Frequencies</h3>
+      <div class="row">
+        <div style="flex:1;min-width:220px">
+          <label>Carrier tone &mdash; <span id="toneCarrierV">200</span> Hz</label>
+          <input type="range" id="toneCarrier" min="80" max="500" step="1" value="200">
+        </div>
+        <div style="flex:1;min-width:220px">
+          <label>Beat / pulse &mdash; <span id="toneBeatV">10.0</span> Hz</label>
+          <input type="range" id="toneBeat" min="0.5" max="40" step="0.5" value="10">
+        </div>
+        <div style="min-width:140px">
+          <label>Volume &mdash; <span id="toneVolV">30</span>%</label>
+          <input type="range" id="toneVol" min="0" max="100" step="1" value="30">
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="toneBand" data-hz="2">Delta 2 &mdash; deep sleep</button>
+        <button class="toneBand" data-hz="6">Theta 6 &mdash; drowsy</button>
+        <button class="toneBand" data-hz="10">Alpha 10 &mdash; relaxed</button>
+        <button class="toneBand" data-hz="20">Beta 20 &mdash; alert</button>
+        <button class="toneBand" data-hz="40">Gamma 40 &mdash; focus</button>
+      </div>
+      <p class="hint">Sliders retune the sound live while it plays &mdash; sweep the beat and hear the rhythm change.</p>
+    </div>
+
+    <div class="card">
+      <h3>Session</h3>
+      <div class="row">
+        <div><label><input type="checkbox" id="toneProto" checked> Baseline &rarr; Stimulus &rarr; Post (2 min silence each side, for clean Mind Monitor comparisons)</label></div>
+        <div>
+          <label>Stimulus length</label>
+          <select id="toneStimLen">
+            <option value="300">5 min</option>
+            <option value="600" selected>10 min</option>
+            <option value="900">15 min</option>
+            <option value="1200">20 min</option>
+          </select>
+        </div>
+        <button id="toneRun" class="primary">START</button>
+        <div class="stat"><span>Clock</span><b id="toneClock" style="font-family:var(--mono)">00:00</b></div>
+        <div class="stat"><span>Phase</span><b id="tonePhase" style="font-family:var(--mono)">ready</b></div>
+      </div>
+      <p class="hint">Same flow as your Entrainment Lab page: start a Mind Monitor recording first, then START here and
+        sit with eyes closed through all three phases. When it says complete, stop Mind Monitor, export the CSV,
+        and feed it to the Import tab. Keep the volume conversational &mdash; entrainment needs a clear rhythm, not
+        loudness. Skip sessions entirely if you have any seizure history.</p>
     </div>
   </div>
 
@@ -902,7 +976,8 @@ const settings = Object.assign({
   nfK:0.5, nfTau:2, nfSound:'tone', nfVol:0.35,
   exF0:4, exCarrier:200, exVol:0.25, exBlock:180, exRest:15, exReps:6,
   exConds:'binaural,isochronic,pure,silence', exBlind:true,
-  impF0:10
+  impF0:10,
+  toneMode:'binaural', toneCarrier:200, toneBeat:10, toneVol:30, toneStimLen:600
 }, JSON.parse(localStorage.getItem('museLab.settings')||'{}'));
 
 function saveSettings(){ localStorage.setItem('museLab.settings', JSON.stringify(settings)); }
@@ -1892,6 +1967,7 @@ function frame(){
     if(nf.running) nfUI(rewarding);
   }
   if(activeView==='exp') exProgressUI();
+  if(activeView==='tone') drawToneScope();
   if(rec.on){
     $('#recDur').textContent = fmtTime((Date.now()-rec.t0)/1000);
     $('#recN').textContent = rec.n.toLocaleString();
@@ -2372,6 +2448,179 @@ function exExportJson(){
     seq: EXP.seq, simInject: EXP.simInject,
     markers: EXP.markers, results: EXP.results,
   }, null, 2), 'application/json');
+}
+
+/* ============================================================
+   Tone lab — port of the user's standalone Entrainment Lab page:
+   three modes, live retune, band presets, baseline/stim/post
+   timer. Independent audio graph from the experiment's STIM.
+   ============================================================ */
+const TONE = { mode:'binaural', running:false, phase:-1, startT:0, timer:null, ctx:null, nodes:null };
+const TONE_DESC = {
+  binaural: 'Two steady tones, one per ear. Left gets the carrier, right gets carrier + beat — the rhythm is built inside your brain from the difference. Headphones required.',
+  monaural: 'Both tones mixed together in both channels. The rhythm is a real, physical volume swell — works through a speaker.',
+  isochronic:'One tone switched on and off at the pulse rate — the heartbeat pattern. Sharpest rhythm of the three; often the strongest measurable EEG response.',
+};
+
+function toneTear(){
+  if(!TONE.nodes) return;
+  const n = TONE.nodes, ctx = TONE.ctx;
+  try{
+    const t = ctx.currentTime;
+    n.master.gain.cancelScheduledValues(t);
+    n.master.gain.setValueAtTime(Math.max(0.0001, n.master.gain.value), t);
+    n.master.gain.linearRampToValueAtTime(0.0001, t+0.15);
+  }catch(e){}
+  setTimeout(()=>{
+    n.oscs.forEach(o=>{ try{ o.stop(); }catch(e){} });
+    try{ n.master.disconnect(); }catch(e){}
+  }, 260);
+  TONE.nodes = null;
+}
+
+function toneVolTo(v, ramp){
+  if(!TONE.nodes || !TONE.ctx) return;
+  const t = TONE.ctx.currentTime;
+  TONE.nodes.master.gain.cancelScheduledValues(t);
+  TONE.nodes.master.gain.setValueAtTime(Math.max(0.0001, TONE.nodes.master.gain.value), t);
+  TONE.nodes.master.gain.linearRampToValueAtTime(clamp(v,0,1), t+(ramp||0.05));
+}
+
+function toneBuild(){
+  toneTear();
+  TONE.ctx = TONE.ctx || new (window.AudioContext||window.webkitAudioContext)();
+  if(TONE.ctx.state === 'suspended') TONE.ctx.resume().catch(()=>{});
+  const ctx = TONE.ctx;
+  const master = ctx.createGain(); master.gain.value = 0.0001;
+  master.connect(ctx.destination);
+  const n = {master, oscs:[]};
+  const fc = settings.toneCarrier, fb = settings.toneBeat;
+
+  if(TONE.mode === 'binaural'){
+    const merger = ctx.createChannelMerger(2);
+    const oL = ctx.createOscillator(), oR = ctx.createOscillator();
+    oL.frequency.value = fc; oR.frequency.value = fc + fb;
+    oL.connect(merger,0,0); oR.connect(merger,0,1);
+    merger.connect(master);
+    oL.start(); oR.start();
+    n.oscs.push(oL,oR); n.fL = oL.frequency; n.fR = oR.frequency;
+  }else if(TONE.mode === 'monaural'){
+    const o1 = ctx.createOscillator(), o2 = ctx.createOscillator();
+    o1.frequency.value = fc; o2.frequency.value = fc + fb;
+    const g = ctx.createGain(); g.gain.value = 0.35;      // two summed tones — headroom
+    o1.connect(g); o2.connect(g); g.connect(master);
+    o1.start(); o2.start();
+    n.oscs.push(o1,o2); n.fL = o1.frequency; n.fR = o2.frequency;
+  }else{ // isochronic
+    const o = ctx.createOscillator(); o.frequency.value = fc;
+    const gate = ctx.createGain(); gate.gain.value = 0;
+    const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = fb;
+    const dep = ctx.createGain(); dep.gain.value = 0.5;
+    const soften = ctx.createBiquadFilter(); soften.type = 'lowpass'; soften.frequency.value = 120;
+    const dc = ctx.createConstantSource(); dc.offset.value = 0.5;
+    lfo.connect(dep); dep.connect(soften); soften.connect(gate.gain);
+    dc.connect(gate.gain);
+    const g = ctx.createGain(); g.gain.value = 0.6;
+    o.connect(gate); gate.connect(g); g.connect(master);
+    o.start(); lfo.start(); dc.start();
+    n.oscs.push(o,lfo,dc); n.fL = o.frequency; n.lfoF = lfo.frequency;
+  }
+  TONE.nodes = n;
+  toneVolTo(settings.toneVol/100, 0.4);
+}
+
+function toneRetune(){
+  if(!TONE.nodes || !TONE.ctx) return;
+  const t = TONE.ctx.currentTime + 0.02;
+  const fc = settings.toneCarrier, fb = settings.toneBeat;
+  if(TONE.mode === 'isochronic'){
+    TONE.nodes.fL.setTargetAtTime(fc, t, 0.02);
+    TONE.nodes.lfoF.setTargetAtTime(fb, t, 0.02);
+  }else{
+    TONE.nodes.fL.setTargetAtTime(fc, t, 0.02);
+    TONE.nodes.fR.setTargetAtTime(fc+fb, t, 0.02);
+  }
+}
+
+function tonePhases(){
+  const stim = settings.toneStimLen;
+  return $('#toneProto').checked ? [120, stim, 120] : [0, stim, 0];
+}
+function toneEnter(p){
+  TONE.phase = p;
+  if(p === 1) toneBuild(); else toneTear();
+  $('#tonePhase').textContent = ['baseline — quiet, eyes closed','stimulus — eyes closed','post — quiet, eyes closed'][p];
+}
+function toneStart(){
+  TONE.running = true;
+  TONE.startT = performance.now();
+  $('#toneRun').textContent = 'STOP';
+  $('#toneRun').className = 'danger';
+  toneEnter($('#toneProto').checked ? 0 : 1);
+  TONE.timer = setInterval(toneTick, 250);
+}
+function toneStop(manual){
+  TONE.running = false;
+  clearInterval(TONE.timer);
+  toneTear();
+  TONE.phase = -1;
+  $('#toneRun').textContent = 'START';
+  $('#toneRun').className = 'primary';
+  $('#tonePhase').textContent = manual ? 'stopped — ready' : 'complete — stop Mind Monitor';
+}
+function toneTick(){
+  const el = (performance.now() - TONE.startT)/1000;
+  const durs = tonePhases();
+  let acc = 0, cur = -2, inP = 0;
+  for(let i=0;i<3;i++){
+    if(!durs[i]) continue;
+    if(el < acc + durs[i]){ cur = i; inP = el - acc; break; }
+    acc += durs[i];
+  }
+  if(cur === -2){ toneStop(false); $('#toneClock').textContent = fmtTime(el); return; }
+  if(cur !== TONE.phase) toneEnter(cur);
+  $('#toneClock').textContent = fmtTime(el) + ' · ' + fmtTime(inP);
+}
+
+let toneScopeT = 0, toneScopeLast = performance.now();
+function drawToneScope(){
+  const cv = $('#toneScope'); if(!cv.clientWidth) return;
+  const {ctx,w,h} = fitCanvas(cv);
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - toneScopeLast)/1000); toneScopeLast = now;
+  toneScopeT += dt * ((TONE.running && TONE.phase===1) ? 1 : 0.25);
+
+  ctx.strokeStyle = '#1e252e'; ctx.lineWidth = 1;
+  for(let x=0;x<=w;x+=w/12){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+
+  const fb = settings.toneBeat, winSec = 2/fb;             // always exactly two beat cycles
+  const fcDraw = Math.min(settings.toneCarrier, 24/winSec); // cap visual density
+  const midU = h*0.32, midD = h*0.76, ampU = h*0.19, ampD = h*0.16;
+  const trace = (color, fn, mid, amp, lw)=>{
+    ctx.strokeStyle = color; ctx.lineWidth = lw||1.6; ctx.beginPath();
+    for(let i=0;i<=w;i++){
+      const t = (i/w)*winSec + toneScopeT;
+      const y = mid - fn(t)*amp;
+      i ? ctx.lineTo(i,y) : ctx.moveTo(i,y);
+    }
+    ctx.stroke();
+  };
+  const w1 = t => Math.sin(2*Math.PI*fcDraw*t);
+  const w2 = t => Math.sin(2*Math.PI*(fcDraw+fb)*t);
+  if(TONE.mode === 'binaural'){
+    trace('#e3b341', w1, midU, ampU);
+    trace('#7c9cff', w2, midU, ampU);
+    trace('#3fb950', t=>0.5+0.5*Math.cos(2*Math.PI*fb*t), midD, ampD, 2);
+  }else if(TONE.mode === 'monaural'){
+    trace('#e3b341', t=>0.5*(w1(t)+w2(t)), midU, ampU);
+    trace('#3fb950', t=>Math.abs(Math.cos(Math.PI*fb*t)), midD, ampD, 2);
+  }else{
+    const gate = t => Math.sin(2*Math.PI*fb*t) > 0 ? 1 : 0;
+    trace('#e3b341', t=>w1(t)*gate(t), midU, ampU);
+    trace('#3fb950', gate, midD, ampD, 2);
+  }
+  ctx.fillStyle = '#5b6675'; ctx.font = '10px ui-monospace,monospace';
+  ctx.fillText(`${settings.toneBeat.toFixed(1)} Hz ${TONE.mode}`, 8, 14);
 }
 
 /* ============================================================
@@ -2860,6 +3109,35 @@ bindSetting('#setHp','hp', rebuildFilters, true);
 bindSetting('#setArt','artifact', null, true);
 bindSetting('#setScale','scale', null, true);
 bindSetting('#setPreset','preset');
+
+// Tone lab
+TONE.mode = settings.toneMode;
+function toneModeUI(){
+  document.querySelectorAll('.toneMode').forEach(x =>
+    x.className = 'toneMode' + (x.dataset.m === TONE.mode ? ' primary' : ''));
+  $('#toneModeDesc').textContent = TONE_DESC[TONE.mode];
+}
+document.querySelectorAll('.toneMode').forEach(b => b.onclick = ()=>{
+  TONE.mode = b.dataset.m;
+  settings.toneMode = TONE.mode; saveSettings();
+  toneModeUI();
+  if(TONE.running && TONE.phase === 1) toneBuild();   // hot-swap mid-play
+});
+toneModeUI();
+bindSetting('#toneCarrier','toneCarrier', ()=>{ $('#toneCarrierV').textContent = settings.toneCarrier; toneRetune(); }, true);
+bindSetting('#toneBeat','toneBeat', ()=>{ $('#toneBeatV').textContent = settings.toneBeat.toFixed(1); toneRetune(); }, true);
+bindSetting('#toneVol','toneVol', ()=>{ $('#toneVolV').textContent = settings.toneVol; toneVolTo(settings.toneVol/100, 0.05); }, true);
+bindSetting('#toneStimLen','toneStimLen', null, true);
+$('#toneCarrierV').textContent = settings.toneCarrier;
+$('#toneBeatV').textContent = (+settings.toneBeat).toFixed(1);
+$('#toneVolV').textContent = settings.toneVol;
+document.querySelectorAll('.toneBand').forEach(b => b.onclick = ()=>{
+  settings.toneBeat = +b.dataset.hz; saveSettings();
+  $('#toneBeat').value = settings.toneBeat;
+  $('#toneBeatV').textContent = settings.toneBeat.toFixed(1);
+  toneRetune();
+});
+$('#toneRun').onclick = ()=> TONE.running ? toneStop(true) : toneStart();
 
 // Import
 bindSetting('#impF0','impF0', null, true);
