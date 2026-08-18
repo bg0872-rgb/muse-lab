@@ -1,0 +1,2461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Muse Lab</title>
+</head>
+<body>
+<style>
+:root{
+  --bg:#0e1116; --panel:#161b22; --panel2:#1c232c; --line:#2a323d;
+  --fg:#d7dee8; --dim:#7d8899; --accent:#4fd1c5; --accent2:#7c9cff;
+  --good:#3fb950; --warn:#d29922; --bad:#f85149;
+  --tp9:#4fd1c5; --af7:#7c9cff; --af8:#f778ba; --tp10:#e3b341;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);color:var(--fg);
+  font:13px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  display:flex;flex-direction:column;overflow:hidden;
+}
+button{
+  font:inherit;color:var(--fg);background:var(--panel2);
+  border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer;
+}
+button:hover:not(:disabled){border-color:var(--accent);color:#fff}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:var(--accent);color:#06231f;border-color:var(--accent);font-weight:600}
+button.primary:hover:not(:disabled){background:#63e3d7;color:#06231f}
+button.danger{border-color:var(--bad);color:var(--bad)}
+select,input[type=text],input[type=number]{
+  font:inherit;color:var(--fg);background:var(--panel2);
+  border:1px solid var(--line);border-radius:6px;padding:5px 8px;
+}
+input[type=range]{accent-color:var(--accent);width:100%}
+label{color:var(--dim);font-size:12px}
+
+/* ---- top bar ---- */
+#top{
+  display:flex;align-items:center;gap:14px;padding:10px 16px;
+  background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto;flex-wrap:wrap;
+}
+#brand{font-weight:700;letter-spacing:.16em;font-size:12px;color:var(--accent)}
+#status{font-family:var(--mono);font-size:11px;color:var(--dim)}
+#status.on{color:var(--good)}
+.chips{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.chip{
+  font-family:var(--mono);font-size:10px;padding:3px 7px;border-radius:4px;
+  background:var(--panel2);border:1px solid var(--line);color:var(--dim);white-space:nowrap;
+}
+.chip b{color:var(--fg);font-weight:600}
+.q-good{border-color:var(--good);color:var(--good)}
+.q-fair{border-color:var(--warn);color:var(--warn)}
+.q-poor{border-color:var(--bad);color:var(--bad)}
+
+/* ---- tabs ---- */
+#tabs{display:flex;gap:2px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto}
+.tab{
+  padding:8px 16px;cursor:pointer;font-size:12px;color:var(--dim);
+  border-bottom:2px solid transparent;user-select:none;
+}
+.tab:hover{color:var(--fg)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* ---- panels ---- */
+#main{flex:1 1 auto;overflow:auto;padding:16px}
+.view{display:none}
+.view.active{display:block}
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  padding:14px;margin-bottom:14px;
+}
+.card h3{margin:0 0 10px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:600}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}
+.row>div{display:flex;flex-direction:column;gap:4px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+/* Explicit CSS heights: without them a width:100% canvas scales by its
+   intrinsic ratio and grows to several thousand pixels tall. */
+canvas{display:block;width:100%;border-radius:6px;background:#0b0e13}
+#scope{height:380px}
+#spec,#bands,#nfOrb,#nfTrace,#histChart{height:240px}
+#histDetail{height:220px}
+.hint{color:var(--dim);font-size:11px;margin:8px 0 0}
+.big{font-family:var(--mono);font-size:30px;font-weight:600;line-height:1.1}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:96px}
+.stat span{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line)}
+th{color:var(--dim);font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:600}
+tbody tr:hover{background:var(--panel2);cursor:pointer}
+tbody tr.sel{background:#1f2a33}
+.legend{display:flex;gap:14px;font-size:11px;font-family:var(--mono);flex-wrap:wrap;margin-top:8px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+#reward{
+  height:8px;border-radius:4px;background:var(--panel2);overflow:hidden;margin-top:6px;
+}
+#reward>div{height:100%;width:0;background:var(--good);transition:width .12s}
+.banner{
+  background:#1d2b1f;border:1px solid var(--good);color:#9ae6a4;
+  padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:14px;
+}
+.banner.err{background:#2b1d1d;border-color:var(--bad);color:#ffa198}
+</style>
+
+
+
+<div id="top">
+  <div id="brand">MUSE&nbsp;LAB</div>
+  <button id="btnConnect" class="primary">Connect headband</button>
+  <button id="btnSim">Simulate</button>
+  <div id="status">disconnected</div>
+  <div class="chips" id="chips"></div>
+</div>
+
+<div id="tabs">
+  <div class="tab active" data-v="live">Live</div>
+  <div class="tab" data-v="nf">Neurofeedback</div>
+  <div class="tab" data-v="exp">Experiment</div>
+  <div class="tab" data-v="hist">History</div>
+  <div class="tab" data-v="set">Settings</div>
+</div>
+
+<div id="main">
+  <div id="msg"></div>
+
+  <!-- ============ LIVE ============ -->
+  <div class="view active" id="v-live">
+    <div class="card">
+      <h3>Raw EEG &mdash; last 5 s (filtered, µV)</h3>
+      <canvas id="scope" height="380"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--tp9)"></i>TP9 left ear</span>
+        <span><i style="background:var(--af7)"></i>AF7 left forehead</span>
+        <span><i style="background:var(--af8)"></i>AF8 right forehead</span>
+        <span><i style="background:var(--tp10)"></i>TP10 right ear</span>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>Spectrum (1&ndash;45 Hz)</h3>
+        <canvas id="spec" height="240"></canvas>
+      </div>
+      <div class="card">
+        <h3>Band power &mdash; relative %</h3>
+        <canvas id="bands" height="240"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Recording</h3>
+      <div class="row">
+        <button id="btnRec" class="primary">Start recording</button>
+        <button id="btnMark" disabled>Mark event</button>
+        <button id="btnCsvRaw" disabled>Export raw CSV</button>
+        <button id="btnCsvBand" disabled>Export band-power CSV</button>
+        <button id="btnCsvMarks" disabled>Export markers CSV</button>
+        <div class="stat"><span>Duration</span><b id="recDur" style="font-family:var(--mono)">&mdash;</b></div>
+        <div class="stat"><span>Samples</span><b id="recN" style="font-family:var(--mono)">&mdash;</b></div>
+        <div class="stat"><span>Dropped</span><b id="recDrop" style="font-family:var(--mono)">0</b></div>
+        <div class="stat"><span>Marks</span><b id="recMarks" style="font-family:var(--mono)">0</b></div>
+      </div>
+      <p class="hint">Raw CSV is unfiltered 256 Hz data in µV, one row per sample &mdash; the format most analysis
+        tools (MNE, EEGLAB) expect. Band-power CSV is one row per 250 ms window. Mark event stamps the current
+        moment (M1, M2, &hellip;) on the recording timeline &mdash; press it when an external stimulus starts or stops,
+        e.g. a Lumenate Nova session.</p>
+    </div>
+  </div>
+
+  <!-- ============ NEUROFEEDBACK ============ -->
+  <div class="view" id="v-nf">
+    <div class="card">
+      <h3>Protocol</h3>
+      <div class="row">
+        <div>
+          <label>Reward band (numerator)</label>
+          <select id="nfNum">
+            <option value="alpha" selected>Alpha 8&ndash;13 Hz</option>
+            <option value="theta">Theta 4&ndash;8 Hz</option>
+            <option value="beta">Beta 13&ndash;30 Hz</option>
+            <option value="gamma">Gamma 30&ndash;44 Hz</option>
+            <option value="delta">Delta 1&ndash;4 Hz</option>
+          </select>
+        </div>
+        <div>
+          <label>Divide by (denominator)</label>
+          <select id="nfDen">
+            <option value="">nothing &mdash; absolute power</option>
+            <option value="total" selected>total power (relative)</option>
+            <option value="theta">theta</option>
+            <option value="beta">beta</option>
+            <option value="theta+beta">theta + beta</option>
+            <option value="delta+theta">delta + theta</option>
+          </select>
+        </div>
+        <div>
+          <label>Channels</label>
+          <select id="nfChan">
+            <option value="af7,af8" selected>Frontal &mdash; AF7 + AF8</option>
+            <option value="tp9,tp10">Temporal &mdash; TP9 + TP10</option>
+            <option value="tp9,af7,af8,tp10">All four</option>
+            <option value="af7">AF7 only</option>
+            <option value="af8">AF8 only</option>
+          </select>
+        </div>
+        <div>
+          <label>Direction</label>
+          <select id="nfDir">
+            <option value="up" selected>Reward when it goes up</option>
+            <option value="down">Reward when it goes down</option>
+          </select>
+        </div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div style="flex:1;min-width:200px">
+          <label>Difficulty &mdash; threshold at baseline <span id="nfKv">+0.5</span>&sigma;</label>
+          <input type="range" id="nfK" min="-2" max="2" step="0.1" value="0.5">
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label>Smoothing &mdash; <span id="nfTauV">2.0</span> s</label>
+          <input type="range" id="nfTau" min="0.25" max="8" step="0.25" value="2">
+        </div>
+        <div>
+          <label>Feedback sound</label>
+          <select id="nfSound">
+            <option value="tone" selected>Tone swells when rewarded</option>
+            <option value="noise">Noise quiets when rewarded</option>
+            <option value="chime">Chime on each crossing</option>
+            <option value="none">Silent &mdash; visual only</option>
+          </select>
+        </div>
+        <div>
+          <label>Volume</label>
+          <input type="range" id="nfVol" min="0" max="1" step="0.02" value="0.35" style="width:110px">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Session</h3>
+      <div class="row">
+        <button id="btnCal">Calibrate baseline (60 s)</button>
+        <button id="btnNf" class="primary" disabled>Start session</button>
+        <div class="stat"><span>Baseline</span><b id="nfBase" style="font-family:var(--mono)">not set</b></div>
+        <div class="stat"><span>Threshold</span><b id="nfThr" style="font-family:var(--mono)">&mdash;</b></div>
+        <div class="stat"><span>Elapsed</span><b id="nfTime" style="font-family:var(--mono)">0:00</b></div>
+      </div>
+      <p class="hint">Calibrate with your eyes open, sitting normally &mdash; that becomes the reference the threshold
+        is measured against. Recalibrate each day; electrode contact and skin impedance shift session to session.</p>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>Feedback</h3>
+        <canvas id="nfOrb" height="240"></canvas>
+        <div id="reward"><div id="rewardBar"></div></div>
+        <div class="row" style="margin-top:12px">
+          <div class="stat"><span>Metric</span><b class="big" id="nfVal">&mdash;</b></div>
+          <div class="stat"><span>Time in reward</span><b class="big" id="nfPct">&mdash;</b></div>
+          <div class="stat"><span>Artifacts rejected</span><b class="big" id="nfArt">0</b></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Metric over time</h3>
+        <canvas id="nfTrace" height="240"></canvas>
+        <p class="hint">Solid line is the smoothed metric, dashed line is your reward threshold.
+          Grey bands are windows dropped for artifacts (blinks, jaw clench, movement).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ EXPERIMENT ============ -->
+  <div class="view" id="v-exp">
+    <div class="card">
+      <h3>Stimulus</h3>
+      <div class="row">
+        <div>
+          <label>Beat / modulation Δ (Hz)</label>
+          <input type="number" id="exF0" value="4" min="0.5" max="40" step="0.5" style="width:90px">
+        </div>
+        <div>
+          <label>Carrier (Hz)</label>
+          <input type="number" id="exCarrier" value="200" min="80" max="1000" step="10" style="width:90px">
+        </div>
+        <div style="min-width:140px">
+          <label>Volume</label>
+          <input type="range" id="exVol" min="0" max="1" step="0.02" value="0.25">
+        </div>
+        <div><label>&nbsp;</label><button id="exStereo">Stereo check: L then R</button></div>
+        <div><label>&nbsp;</label><button class="exPrev" data-c="binaural">Hear binaural</button></div>
+        <div><label>&nbsp;</label><button class="exPrev" data-c="isochronic">Hear isochronic</button></div>
+        <div><label>&nbsp;</label><button id="exPrevStop">Stop preview</button></div>
+      </div>
+      <p class="hint">Run the stereo check with the exact headphones you will wear: LOW tone in the LEFT ear only,
+        then HIGH tone in the RIGHT ear only. If either tone reaches both ears (mono Bluetooth profile, Windows
+        mono-audio toggle, spatial sound), the binaural condition degrades into an ordinary audible beat and the
+        run is void. Wired closed-back headphones at modest volume are the safe choice.</p>
+    </div>
+
+    <div class="card">
+      <h3>Protocol</h3>
+      <div class="row">
+        <div><label><input type="checkbox" id="exC-binaural" checked> Binaural beat</label></div>
+        <div><label><input type="checkbox" id="exC-isochronic" checked> Isochronic AM &mdash; positive control</label></div>
+        <div><label><input type="checkbox" id="exC-pure" checked> Pure tone &mdash; auditory control</label></div>
+        <div><label><input type="checkbox" id="exC-silence" checked> Silence &mdash; baseline</label></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label>Block length (s)</label><input type="number" id="exBlock" value="180" min="90" max="600" step="10" style="width:90px"></div>
+        <div><label>Rest between blocks (s)</label><input type="number" id="exRest" value="15" min="5" max="120" step="5" style="width:90px"></div>
+        <div><label>Repeats per condition</label><input type="number" id="exReps" value="6" min="1" max="12" step="1" style="width:90px"></div>
+        <div><label><input type="checkbox" id="exBlind" checked> Blind &mdash; hide conditions and numbers until the run ends</label></div>
+      </div>
+      <p class="hint">Block order is shuffled at start. 4 conditions &times; 6 repeats &times; ~3.3 min &asymp; 80 minutes;
+        run a pilot with 2 repeats first. Eyes closed, seated, still. Minimum 90 s per block so wPLI has &ge; 8 clean
+        16 s windows. The artifact threshold in Settings governs which windows are dropped.</p>
+    </div>
+
+    <div class="card">
+      <h3>Run</h3>
+      <div class="row">
+        <button id="exStart" class="primary">Start run</button>
+        <button id="exAbort" class="danger" disabled>Abort</button>
+        <div class="stat"><span>Block</span><b id="exBlkN" style="font-family:var(--mono)">&mdash;</b></div>
+        <div class="stat"><span>Condition</span><b id="exCond" style="font-family:var(--mono)">&mdash;</b></div>
+        <div class="stat"><span>Phase</span><b id="exPhase" style="font-family:var(--mono)">idle</b></div>
+        <div class="stat"><span>Time left</span><b id="exLeft" style="font-family:var(--mono)">&mdash;</b></div>
+      </div>
+      <p class="hint">Recording starts and stops automatically so the block markers line up with the raw CSV
+        timeline. Leave the Recording controls on the Live tab alone while a run is in progress.</p>
+    </div>
+
+    <div class="card">
+      <h3>Results &mdash; this run</h3>
+      <table>
+        <thead><tr>
+          <th>#</th><th>Condition</th><th>dwPLI AF7&harr;AF8</th><th>dwPLI TP9&harr;TP10</th>
+          <th>icoh F / T</th><th>SNR@&Delta; tp9/af7/af8/tp10</th><th>Rejected</th>
+        </tr></thead>
+        <tbody id="exRows"></tbody>
+      </table>
+      <p class="hint" id="exEmpty">No blocks completed yet.</p>
+      <div id="exSummaryWrap" style="display:none">
+        <h3 style="margin-top:14px">Per-condition summary (mean &plusmn; sd across blocks)</h3>
+        <table>
+          <thead><tr><th>Condition</th><th>n</th><th>dwPLI frontal</th><th>dwPLI temporal</th><th>SNR frontal</th><th>SNR temporal</th></tr></thead>
+          <tbody id="exSumRows"></tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="exCsvEvents" disabled>Export events CSV</button>
+        <button id="exJson" disabled>Export run JSON</button>
+      </div>
+      <p class="hint">Verdicts come from comparing conditions, never from one block: a single 3-minute block of
+        1/f EEG can reach dwPLI &asymp; 0.3 by chance. Export the raw CSV (Live tab) plus the events CSV for
+        offline analysis in MNE.</p>
+    </div>
+
+    <div class="card">
+      <h3>Pipeline self-test (Simulate mode)</h3>
+      <div class="row">
+        <div><label><input type="checkbox" id="exInject"> Inject a fake 2.5 µV entrainment signal (45&deg; interhemispheric lag) during binaural and isochronic blocks</label></div>
+      </div>
+      <p class="hint">With Simulate running and this ON, a run must show elevated dwPLI and SNR on binaural and
+        isochronic rows and nothing on pure/silence. With it OFF, every row must be null. Passing both is the
+        difference between &ldquo;no effect&rdquo; and &ldquo;broken pipeline&rdquo;.</p>
+    </div>
+  </div>
+
+  <!-- ============ HISTORY ============ -->
+  <div class="view" id="v-hist">
+    <div class="card">
+      <h3>Trend across sessions</h3>
+      <div class="row" style="margin-bottom:10px">
+        <div>
+          <label>Plot</label>
+          <select id="histMetric">
+            <option value="pctReward" selected>% time in reward</option>
+            <option value="meanMetric">Mean metric</option>
+            <option value="alpha">Mean relative alpha</option>
+            <option value="theta">Mean relative theta</option>
+            <option value="beta">Mean relative beta</option>
+            <option value="artifactPct">% artifacts</option>
+          </select>
+        </div>
+        <button id="btnExportAll">Export all sessions (JSON)</button>
+        <button id="btnClear" class="danger">Delete all</button>
+      </div>
+      <canvas id="histChart" height="240"></canvas>
+    </div>
+    <div class="card">
+      <h3>Sessions</h3>
+      <table>
+        <thead><tr>
+          <th>Date</th><th>Length</th><th>Protocol</th><th>Mean</th>
+          <th>Threshold</th><th>% reward</th><th>Artifacts</th><th></th>
+        </tr></thead>
+        <tbody id="histRows"></tbody>
+      </table>
+      <p class="hint" id="histEmpty">No sessions recorded yet.</p>
+    </div>
+    <div class="card" id="histDetailCard" style="display:none">
+      <h3>Session detail</h3>
+      <canvas id="histDetail" height="220"></canvas>
+    </div>
+  </div>
+
+  <!-- ============ SETTINGS ============ -->
+  <div class="view" id="v-set">
+    <div class="card">
+      <h3>Signal processing</h3>
+      <div class="row">
+        <div>
+          <label>Mains notch filter</label>
+          <select id="setNotch">
+            <option value="60" selected>60 Hz (Americas, Japan)</option>
+            <option value="50">50 Hz (Europe, Asia, Africa)</option>
+            <option value="0">Off</option>
+          </select>
+        </div>
+        <div>
+          <label>High-pass cutoff (Hz)</label>
+          <input type="number" id="setHp" value="0.5" min="0.1" max="4" step="0.1" style="width:90px">
+        </div>
+        <div>
+          <label>Artifact threshold (µV)</label>
+          <input type="number" id="setArt" value="120" min="20" max="500" step="10" style="width:90px">
+        </div>
+        <div>
+          <label>Scope range (±µV)</label>
+          <input type="number" id="setScale" value="100" min="20" max="1000" step="10" style="width:90px">
+        </div>
+      </div>
+      <p class="hint">The notch matters more than people expect &mdash; mains hum leaks into the gamma band and will
+        quietly inflate any gamma-based metric. Leave it on unless you are specifically inspecting it.</p>
+    </div>
+    <div class="card">
+      <h3>Device</h3>
+      <div class="row">
+        <div>
+          <label>Preset</label>
+          <select id="setPreset">
+            <option value="p21" selected>p21 &mdash; EEG + PPG (Muse 2 / S)</option>
+            <option value="p20">p20 &mdash; EEG only</option>
+            <option value="p50">p50 &mdash; Muse S alternate</option>
+          </select>
+        </div>
+        <div><label>&nbsp;</label><button id="btnDisc" disabled>Disconnect</button></div>
+      </div>
+      <p class="hint">If the headband connects but no data arrives, try p20. Firmware revisions differ in which
+        presets they accept, and a rejected preset fails silently.</p>
+    </div>
+    <div class="card">
+      <h3>Notes</h3>
+      <p class="hint" style="line-height:1.7">
+        <b>Electrode order:</b> TP9 (left ear), AF7 (left forehead), AF8 (right forehead), TP10 (right ear), at 256 Hz.
+        Raw values are 12-bit, converted with (counts &minus; 2048) &times; 0.48828125 to give µV.<br>
+        <b>Contact:</b> the ear electrodes are the usual culprit. Wet them slightly and make sure hair is out of the way &mdash;
+        the quality chips at the top right go green when a channel settles.<br>
+        <b>This is not a medical device.</b> Consumer EEG at four dry electrodes is fine for training and curiosity,
+        and cannot diagnose anything.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Validated analysis module (see test-analysis.html). Kept as a separate
+     file on purpose: the tests exercise the exact bytes the app runs. -->
+<script>
+/* ============================================================
+   Muse Lab — experiment analysis path
+   Long-window spectral + cross-spectral analysis for the
+   entrainment experiment. Deliberately separate from the fast
+   256-point neurofeedback path in index.html.
+
+   Everything here is pure computation on Float32/Float64 arrays:
+   no DOM, no BLE, no globals shared with the app. That is what
+   makes it testable in isolation (see test-analysis.html).
+
+   Conventions:
+   - fs = 256 Hz throughout (Muse EEG rate).
+   - PSD is one-sided, in µV²/Hz, same convention as the app's
+     short path: a 20 µV-amplitude sine carries 200 µV² of power
+     (A²/2), so its band-integrated PSD must come out at 200.
+   - Cross-spectral metrics are Welch-averaged over 50%-overlapped
+     Hann windows. Plain magnitude-squared coherence is reported
+     but NOT to be trusted on a shared-reference montage; the
+     decision metrics are imaginary coherency and wPLI, which are
+     blind to zero-lag (volume-conducted / common-reference) mixing.
+   ============================================================ */
+'use strict';
+
+const XA = (() => {
+
+const FS = 256;
+
+/* ---------- FFT: iterative radix-2, same algorithm as the app ---------- */
+function makeFFT(N){
+  if((N & (N-1)) !== 0) throw new Error('FFT size must be a power of two');
+  const bits = Math.round(Math.log2(N));
+  const rev = new Uint32Array(N);
+  for(let i=0;i<N;i++){ let r=0; for(let b=0;b<bits;b++) r |= ((i>>b)&1) << (bits-1-b); rev[i]=r; }
+  const cs = new Float64Array(N/2), sn = new Float64Array(N/2);
+  for(let i=0;i<N/2;i++){ cs[i]=Math.cos(-2*Math.PI*i/N); sn[i]=Math.sin(-2*Math.PI*i/N); }
+  return function(re,im){
+    for(let i=0;i<N;i++){
+      const j=rev[i];
+      if(j>i){ let t=re[i];re[i]=re[j];re[j]=t; t=im[i];im[i]=im[j];im[j]=t; }
+    }
+    for(let size=2;size<=N;size<<=1){
+      const half=size>>1, step=N/size;
+      for(let i=0;i<N;i+=size){
+        for(let j=i,k=0;j<i+half;j++,k+=step){
+          const c=cs[k], s=sn[k], jh=j+half;
+          const tr = re[jh]*c - im[jh]*s;
+          const ti = re[jh]*s + im[jh]*c;
+          re[jh]=re[j]-tr; im[jh]=im[j]-ti;
+          re[j]+=tr; im[j]+=ti;
+        }
+      }
+    }
+  };
+}
+
+/* ---------- Spectral engine for one window length ---------- */
+// One engine per NFFT so the scratch buffers and window are sized once.
+function makeEngine(nfft){
+  const fft = makeFFT(nfft);
+  const hann = new Float64Array(nfft);
+  let hp = 0;
+  for(let i=0;i<nfft;i++){ hann[i] = 0.5*(1-Math.cos(2*Math.PI*i/(nfft-1))); hp += hann[i]*hann[i]; }
+  const winU = hp/nfft;                       // window power correction
+  const re = new Float64Array(nfft), im = new Float64Array(nfft);
+  const half = nfft>>1;
+
+  // Windowed FFT of one segment (with mean removal — a DC offset
+  // leaks through the Hann window into the first few bins otherwise).
+  // Returns fresh {re,im} arrays of length nfft/2+1 (one-sided).
+  function spectrum(x, start){
+    let mean = 0;
+    for(let i=0;i<nfft;i++) mean += x[start+i];
+    mean /= nfft;
+    for(let i=0;i<nfft;i++){ re[i] = (x[start+i]-mean)*hann[i]; im[i]=0; }
+    fft(re,im);
+    const outRe = new Float64Array(half+1), outIm = new Float64Array(half+1);
+    for(let k=0;k<=half;k++){ outRe[k]=re[k]; outIm[k]=im[k]; }
+    return {re:outRe, im:outIm};
+  }
+
+  return { nfft, winU, half, spectrum, df: FS/nfft };
+}
+
+/* ============================================================
+   Segment artifact check
+   A segment is dirty when more than maxBad samples deviate more
+   than thresh µV from the segment mean. Mean-relative, so slow
+   electrode drift doesn't count as artifact; proportion-based,
+   so one interpolated spike sample doesn't kill a 16 s window.
+   ============================================================ */
+function segClean(x, start, nfft, thresh, maxBad){
+  let mean = 0;
+  for(let i=0;i<nfft;i++) mean += x[start+i];
+  mean /= nfft;
+  let bad = 0;
+  for(let i=0;i<nfft;i++){
+    if(Math.abs(x[start+i]-mean) > thresh && ++bad > maxBad) return false;
+  }
+  return true;
+}
+
+/* ============================================================
+   Welch PSD — one channel
+   x: array of samples (µV), 50% overlap Hann segments.
+   opts.reject: {thresh (µV), frac (default 0.01)} — segments where
+   more than frac*nfft samples exceed thresh from the mean are skipped.
+   Returns {psd: Float64Array(nfft/2+1) in µV²/Hz, df, nSeg, nRej}.
+   ============================================================ */
+function welchPSD(x, nfft, opts){
+  const eng = makeEngine(nfft);
+  const hop = nfft>>1;
+  const total = Math.floor((x.length - nfft)/hop) + 1;
+  if(total < 1) throw new Error(`welchPSD: need ${nfft} samples, got ${x.length}`);
+  const rej = opts && opts.reject;
+  const maxBad = rej ? Math.floor((rej.frac==null?0.01:rej.frac)*nfft) : 0;
+  const acc = new Float64Array(eng.half+1);
+  const norm = 1/(FS*nfft*eng.winU);
+  let nSeg = 0, nRej = 0;
+  for(let s=0;s<total;s++){
+    const st = s*hop;
+    if(rej && !segClean(x, st, nfft, rej.thresh, maxBad)){ nRej++; continue; }
+    const {re,im} = eng.spectrum(x, st);
+    for(let k=0;k<=eng.half;k++){
+      const p = (re[k]*re[k] + im[k]*im[k]) * norm;
+      acc[k] += (k===0||k===eng.half) ? p : 2*p;
+    }
+    nSeg++;
+  }
+  if(nSeg < 1) throw new Error('welchPSD: every segment rejected as artifact');
+  for(let k=0;k<=eng.half;k++) acc[k] /= nSeg;
+  return {psd:acc, df:eng.df, nSeg, nRej};
+}
+
+/* ============================================================
+   Cross-spectral connectivity — two channels
+   Returns, per frequency bin:
+     coh   — magnitude-squared coherence   (reference-contaminated, shown for comparison only)
+     icoh  — |imaginary part of coherency| (zero-lag-blind)
+     wpli  — raw weighted phase-lag index  (zero-lag-blind but BIASED upward
+             at small/correlated segment counts — reported for reference only)
+     dwpli — debiased squared wPLI (Vinck et al. 2011, same estimator as
+             MNE's wpli2_debiased). Null expectation ~0 regardless of
+             segment count; can go slightly negative under the null.
+             THIS is the primary decision metric.
+   Needs several segments to mean anything; enforce >= 8.
+   ============================================================ */
+function connectivity(x, y, nfft, opts){
+  if(x.length !== y.length) throw new Error('connectivity: length mismatch');
+  const eng = makeEngine(nfft);
+  const hop = nfft>>1;
+  const total = Math.floor((x.length - nfft)/hop) + 1;
+  const rej = opts && opts.reject;
+  const maxBad = rej ? Math.floor((rej.frac==null?0.01:rej.frac)*nfft) : 0;
+  const half = eng.half;
+
+  const Sxx = new Float64Array(half+1), Syy = new Float64Array(half+1);
+  const SxyRe = new Float64Array(half+1), SxyIm = new Float64Array(half+1);
+  const sumIm = new Float64Array(half+1), sumAbsIm = new Float64Array(half+1);
+  const sumIm2 = new Float64Array(half+1);
+
+  let nSeg = 0, nRej = 0;
+  for(let s=0;s<total;s++){
+    const st = s*hop;
+    // Joint mask: a segment is used only when BOTH channels are clean,
+    // otherwise the pair's cross-spectrum mixes clean and dirty data.
+    if(rej && (!segClean(x, st, nfft, rej.thresh, maxBad) || !segClean(y, st, nfft, rej.thresh, maxBad))){ nRej++; continue; }
+    nSeg++;
+    const X = eng.spectrum(x, st);
+    const Y = eng.spectrum(y, st);
+    for(let k=0;k<=half;k++){
+      // Cross-spectrum X * conj(Y)
+      const cr = X.re[k]*Y.re[k] + X.im[k]*Y.im[k];
+      const ci = X.im[k]*Y.re[k] - X.re[k]*Y.im[k];
+      Sxx[k] += X.re[k]*X.re[k] + X.im[k]*X.im[k];
+      Syy[k] += Y.re[k]*Y.re[k] + Y.im[k]*Y.im[k];
+      SxyRe[k] += cr; SxyIm[k] += ci;
+      sumIm[k] += ci; sumAbsIm[k] += Math.abs(ci); sumIm2[k] += ci*ci;
+    }
+  }
+  if(nSeg < 8) throw new Error(`connectivity: only ${nSeg} clean segments (${nRej} rejected); need >= 8 for a stable wPLI`);
+
+  const coh = new Float64Array(half+1), icoh = new Float64Array(half+1);
+  const wpli = new Float64Array(half+1), dwpli = new Float64Array(half+1);
+  for(let k=0;k<=half;k++){
+    const denom = Sxx[k]*Syy[k];
+    if(denom > 1e-30){
+      const cRe = SxyRe[k]/nSeg, cIm = SxyIm[k]/nSeg;
+      const sxx = Sxx[k]/nSeg, syy = Syy[k]/nSeg;
+      coh[k]  = (cRe*cRe + cIm*cIm)/(sxx*syy);
+      icoh[k] = Math.abs(cIm)/Math.sqrt(sxx*syy);
+    }
+    wpli[k] = sumAbsIm[k] > 1e-30 ? Math.abs(sumIm[k])/sumAbsIm[k] : 0;
+    // Debiased squared wPLI: pairwise products of DIFFERENT segments only.
+    // (Σ im)² − Σ im² kills the i=j self-terms that create the bias.
+    const dNum = sumIm[k]*sumIm[k] - sumIm2[k];
+    const dDen = sumAbsIm[k]*sumAbsIm[k] - sumIm2[k];
+    dwpli[k] = dDen > 1e-30 ? dNum/dDen : 0;
+  }
+  return {coh, icoh, wpli, dwpli, df:eng.df, nSeg, nRej};
+}
+
+/* ============================================================
+   Narrowband peak test — "is there a peak AT f0 that the
+   neighbourhood doesn't explain?"
+   Compares mean PSD in [f0-halfBw, f0+halfBw] against the median
+   PSD of two flanking bands, expressed as a ratio (SNR). Median,
+   not mean, so one neighbouring line (or alpha leakage) doesn't
+   drag the reference up. Flanks exclude a guard band around f0
+   to keep spectral leakage from contaminating the reference.
+   ============================================================ */
+function peakSNR(psd, df, f0, opts){
+  const o = Object.assign({halfBw:0.25, guard:0.5, flank:2.0}, opts);
+  const idx = f => Math.round(f/df);
+  const sig = [];
+  for(let k=idx(f0-o.halfBw); k<=idx(f0+o.halfBw); k++) sig.push(psd[k]);
+  const ref = [];
+  for(let k=idx(f0-o.guard-o.flank); k<idx(f0-o.guard); k++) ref.push(psd[k]);
+  for(let k=idx(f0+o.guard)+1; k<=idx(f0+o.guard+o.flank); k++) ref.push(psd[k]);
+  ref.sort((a,b)=>a-b);
+  const med = ref.length&1 ? ref[ref.length>>1] : 0.5*(ref[ref.length/2-1]+ref[ref.length/2]);
+  const mean = sig.reduce((a,b)=>a+b,0)/sig.length;
+  return {snr: med>1e-30 ? mean/med : 0, sigMean:mean, refMedian:med};
+}
+
+/* ============================================================
+   Validation simulator
+   Synthesises two "channels" with fully known ground truth:
+     - pink (1/f) background noise, independent per channel
+     - alpha at 10 Hz with slow amplitude waxing (realism)
+     - a COMMON zero-lag component (models volume conduction /
+       shared reference) at a chosen frequency
+     - an injected "entrainment" component at f0 present on both
+       channels with a chosen phase lag and amplitude (0 = absent)
+   Deterministic when given a seed (mulberry32) so failures
+   reproduce exactly.
+   ============================================================ */
+function mulberry32(seed){
+  let a = seed>>>0;
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5)|0;
+    let t = Math.imul(a ^ (a>>>15), 1|a);
+    t = (t + Math.imul(t ^ (t>>>7), 61|t)) ^ t;
+    return ((t ^ (t>>>14))>>>0)/4294967296;
+  };
+}
+
+function synth(opts){
+  const o = Object.assign({
+    seconds: 120, seed: 1,
+    pinkAmp: 12,            // background noise scale (µV-ish rms contribution)
+    alphaAmp: 15,           // 10 Hz alpha amplitude, µV
+    commonAmp: 0,           // zero-lag shared component amplitude, µV
+    commonFreq: 6,          // Hz
+    f0: 4,                  // injected entrainment frequency, Hz
+    injAmp: 0,              // injected amplitude µV (0 = no signal: the null case)
+    injPhaseLag: Math.PI/4, // channel-2 lag of the injected component, radians
+  }, opts);
+  const n = Math.round(o.seconds*FS);
+  const rndA = mulberry32(o.seed), rndB = mulberry32(o.seed+9871);
+  const a = new Float64Array(n), b = new Float64Array(n);
+
+  // Independent pink noise per channel (Voss-ish one-pole cascade,
+  // same shape the app's noise feedback uses).
+  let a0=0,a1=0,a2=0, b0=0,b1=0,b2=0;
+  for(let i=0;i<n;i++){
+    const t = i/FS;
+    const wA = rndA()*2-1, wB = rndB()*2-1;
+    a0 = 0.99765*a0 + wA*0.0990460; a1 = 0.96300*a1 + wA*0.2965164; a2 = 0.57000*a2 + wA*1.0526913;
+    b0 = 0.99765*b0 + wB*0.0990460; b1 = 0.96300*b1 + wB*0.2965164; b2 = 0.57000*b2 + wB*1.0526913;
+    let va = o.pinkAmp*(a0+a1+a2+wA*0.1848)*0.12;
+    let vb = o.pinkAmp*(b0+b1+b2+wB*0.1848)*0.12;
+
+    const alphaEnv = 0.6 + 0.4*Math.sin(2*Math.PI*t/17);
+    va += o.alphaAmp*alphaEnv*Math.sin(2*Math.PI*10*t + 0.3);
+    vb += o.alphaAmp*alphaEnv*Math.sin(2*Math.PI*10*t + 1.9);   // alpha NOT phase-locked across channels
+
+    if(o.commonAmp){
+      const c = o.commonAmp*Math.sin(2*Math.PI*o.commonFreq*t + 0.7);
+      va += c; vb += c;                                          // exactly zero lag: the confound
+    }
+    if(o.injAmp){
+      va += o.injAmp*Math.sin(2*Math.PI*o.f0*t);
+      vb += o.injAmp*Math.sin(2*Math.PI*o.f0*t - o.injPhaseLag);
+    }
+    a[i]=va; b[i]=vb;
+  }
+  return {a, b, opts:o};
+}
+
+return { FS, makeFFT, makeEngine, welchPSD, connectivity, peakSNR, synth, mulberry32 };
+})();
+
+if(typeof module !== 'undefined' && module.exports) module.exports = XA;
+
+</script>
+<script>
+'use strict';
+
+/* ============================================================
+   Constants — Muse BLE GATT
+   ============================================================ */
+const MUSE_SERVICE = '0000fe8d-0000-1000-8000-00805f9b34fb';
+const UUID = {
+  control  : '273e0001-4c4d-454d-96be-f03bac821358',
+  tp9      : '273e0003-4c4d-454d-96be-f03bac821358',
+  af7      : '273e0004-4c4d-454d-96be-f03bac821358',
+  af8      : '273e0005-4c4d-454d-96be-f03bac821358',
+  tp10     : '273e0006-4c4d-454d-96be-f03bac821358',
+  telemetry: '273e000b-4c4d-454d-96be-f03bac821358',
+};
+const CHANS = ['tp9','af7','af8','tp10'];
+const CHAN_LABEL = {tp9:'TP9',af7:'AF7',af8:'AF8',tp10:'TP10'};
+const CHAN_COLOR = {tp9:'#4fd1c5',af7:'#7c9cff',af8:'#f778ba',tp10:'#e3b341'};
+
+const FS = 256;            // EEG sample rate
+const NFFT = 256;          // 1 Hz bins
+const HOP = 64;            // 4 windows/sec
+const BANDS = {
+  delta:[1,4], theta:[4,8], alpha:[8,13], beta:[13,30], gamma:[30,44]
+};
+const BAND_NAMES = Object.keys(BANDS);
+
+/* ============================================================
+   Small helpers
+   ============================================================ */
+const $ = s => document.querySelector(s);
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+const fmtTime = s => `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+
+function toast(text, isErr){
+  const box = $('#msg');
+  box.innerHTML = `<div class="banner${isErr?' err':''}">${text}</div>`;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>{ box.innerHTML=''; }, isErr?12000:6000);
+}
+
+/* ============================================================
+   Settings (persisted)
+   ============================================================ */
+const settings = Object.assign({
+  notch:60, hp:0.5, artifact:120, scale:100, preset:'p21',
+  nfNum:'alpha', nfDen:'total', nfChan:'af7,af8', nfDir:'up',
+  nfK:0.5, nfTau:2, nfSound:'tone', nfVol:0.35,
+  exF0:4, exCarrier:200, exVol:0.25, exBlock:180, exRest:15, exReps:6,
+  exConds:'binaural,isochronic,pure,silence', exBlind:true
+}, JSON.parse(localStorage.getItem('museLab.settings')||'{}'));
+
+function saveSettings(){ localStorage.setItem('museLab.settings', JSON.stringify(settings)); }
+
+/* ============================================================
+   DSP — filters
+   ============================================================ */
+// One-pole high-pass, removes electrode DC drift.
+class HighPass {
+  constructor(fc,fs){ this.a = Math.exp(-2*Math.PI*fc/fs); this.xp=0; this.yp=0; }
+  step(x){ const y = this.a*(this.yp + x - this.xp); this.xp=x; this.yp=y; return y; }
+}
+// Biquad notch for mains hum.
+class Notch {
+  constructor(f0,fs,Q){
+    if(!f0){ this.off=true; return; }
+    const w0 = 2*Math.PI*f0/fs, c = Math.cos(w0), al = Math.sin(w0)/(2*Q), a0 = 1+al;
+    this.b0=1/a0; this.b1=-2*c/a0; this.b2=1/a0; this.a1=-2*c/a0; this.a2=(1-al)/a0;
+    this.x1=this.x2=this.y1=this.y2=0;
+  }
+  step(x){
+    if(this.off) return x;
+    const y = this.b0*x + this.b1*this.x1 + this.b2*this.x2 - this.a1*this.y1 - this.a2*this.y2;
+    this.x2=this.x1; this.x1=x; this.y2=this.y1; this.y1=y;
+    return y;
+  }
+}
+
+/* ============================================================
+   DSP — FFT (iterative radix-2)
+   ============================================================ */
+function makeFFT(N){
+  const bits = Math.round(Math.log2(N));
+  const rev = new Uint32Array(N);
+  for(let i=0;i<N;i++){ let r=0; for(let b=0;b<bits;b++) r |= ((i>>b)&1) << (bits-1-b); rev[i]=r; }
+  const cs = new Float64Array(N/2), sn = new Float64Array(N/2);
+  for(let i=0;i<N/2;i++){ cs[i]=Math.cos(-2*Math.PI*i/N); sn[i]=Math.sin(-2*Math.PI*i/N); }
+  return function(re,im){
+    for(let i=0;i<N;i++){
+      const j=rev[i];
+      if(j>i){ let t=re[i];re[i]=re[j];re[j]=t; t=im[i];im[i]=im[j];im[j]=t; }
+    }
+    for(let size=2;size<=N;size<<=1){
+      const half=size>>1, step=N/size;
+      for(let i=0;i<N;i+=size){
+        for(let j=i,k=0;j<i+half;j++,k+=step){
+          const c=cs[k], s=sn[k], jh=j+half;
+          const tr = re[jh]*c - im[jh]*s;
+          const ti = re[jh]*s + im[jh]*c;
+          re[jh]=re[j]-tr; im[jh]=im[j]-ti;
+          re[j]+=tr; im[j]+=ti;
+        }
+      }
+    }
+  };
+}
+const fft = makeFFT(NFFT);
+const HANN = new Float64Array(NFFT);
+let hannPow = 0;
+for(let i=0;i<NFFT;i++){ HANN[i] = 0.5*(1-Math.cos(2*Math.PI*i/(NFFT-1))); hannPow += HANN[i]*HANN[i]; }
+const WIN_U = hannPow/NFFT;   // window power correction
+
+const _re = new Float64Array(NFFT), _im = new Float64Array(NFFT);
+
+// Returns PSD in µV²/Hz for bins 0..NFFT/2
+function psd(buf, start, out){
+  for(let i=0;i<NFFT;i++){ _re[i] = buf[(start+i) & (buf.length-1)] * HANN[i]; _im[i]=0; }
+  fft(_re,_im);
+  const norm = 1/(FS*NFFT*WIN_U);
+  const half = NFFT>>1;
+  for(let k=0;k<=half;k++){
+    const p = (_re[k]*_re[k] + _im[k]*_im[k]) * norm;
+    out[k] = (k===0||k===half) ? p : 2*p;
+  }
+  return out;
+}
+
+function bandPower(spectrum){
+  const df = FS/NFFT;   // 1 Hz
+  const out = {};
+  let total = 0;
+  for(const name of BAND_NAMES){
+    const [lo,hi] = BANDS[name];
+    let s = 0;
+    for(let k=Math.ceil(lo/df); k<hi/df; k++) s += spectrum[k];
+    out[name] = s*df;
+    total += out[name];
+  }
+  out.total = total;
+  return out;
+}
+
+/* ============================================================
+   Ring buffers + per-channel state
+   ============================================================ */
+const RING = 8192;   // 32 s, power of two
+const state = {};
+for(const c of CHANS){
+  state[c] = {
+    ring: new Float32Array(RING),   // filtered
+    raw : new Float32Array(RING),   // unfiltered
+    w   : 0,                        // write index
+    hp  : new HighPass(settings.hp, FS),
+    notch: new Notch(settings.notch, FS, 30),
+    spec: new Float64Array(NFFT/2+1),
+    band: {delta:0,theta:0,alpha:0,beta:0,gamma:0,total:0},
+    rms : 0,
+    railed: 0,
+    quality: 'poor',
+  };
+}
+let totalSamples = 0;     // samples written since connect
+let lastFFTat = 0;        // totalSamples at last analysis
+let droppedPackets = 0;
+
+function rebuildFilters(){
+  for(const c of CHANS){
+    state[c].hp = new HighPass(settings.hp, FS);
+    state[c].notch = new Notch(settings.notch, FS, 30);
+  }
+}
+
+/* ============================================================
+   Recording buffers
+   ============================================================ */
+const rec = {
+  on:false, t0:0,
+  chunks:{tp9:[],af7:[],af8:[],tp10:[]},
+  cur:{tp9:null,af7:null,af8:null,tp10:null},
+  n:0,
+  bandRows:[],       // {t, per-channel per-band}
+  marks:[],          // {label, n} — sample-aligned event stamps
+};
+const CHUNK = 256*30;   // 30 s per chunk
+
+function recPush(chan, v){
+  let c = rec.cur[chan];
+  if(!c || c.i >= CHUNK){ c = {buf:new Float32Array(CHUNK), i:0}; rec.cur[chan]=c; rec.chunks[chan].push(c); }
+  c.buf[c.i++] = v;
+}
+function recConcat(chan){
+  const parts = rec.chunks[chan];
+  let n = 0; for(const p of parts) n += p.i;
+  const out = new Float32Array(n);
+  let o = 0; for(const p of parts){ out.set(p.buf.subarray(0,p.i), o); o += p.i; }
+  return out;
+}
+function recReset(){
+  rec.chunks = {tp9:[],af7:[],af8:[],tp10:[]};
+  rec.cur = {tp9:null,af7:null,af8:null,tp10:null};
+  rec.n = 0; rec.bandRows = []; rec.marks = [];
+}
+
+/* ============================================================
+   BLE — connect and decode
+   ============================================================ */
+let device=null, controlChar=null, connected=false, simTimer=null;
+
+async function sendCmd(str){
+  if(!controlChar) return;
+  const b = new Uint8Array(str.length+2);
+  b[0] = str.length+1;
+  for(let i=0;i<str.length;i++) b[i+1] = str.charCodeAt(i);
+  b[str.length+1] = 0x0a;
+  try{
+    if(controlChar.writeValueWithoutResponse) await controlChar.writeValueWithoutResponse(b);
+    else await controlChar.writeValue(b);
+  }catch(e){ console.warn('cmd '+str, e); }
+}
+
+// 20-byte EEG packet: uint16 index + 12 x 12-bit samples
+function decodeEEG(dv){
+  const index = dv.getUint16(0,false);
+  const out = new Float32Array(12);
+  for(let i=0;i<12;i++){
+    const bit = 16 + i*12;
+    const byte = bit >> 3, shift = bit & 7;
+    const b0 = dv.getUint8(byte);
+    const b1 = byte+1 < dv.byteLength ? dv.getUint8(byte+1) : 0;
+    const b2 = byte+2 < dv.byteLength ? dv.getUint8(byte+2) : 0;
+    const word = (b0<<16) | (b1<<8) | b2;
+    const counts = (word >> (12-shift)) & 0x0fff;
+    out[i] = (counts - 2048) * 0.48828125;   // µV
+  }
+  return {index, samples:out, counts:out};
+}
+
+// Reassemble the four channels by packet index before writing samples.
+const pending = new Map();
+function onChannelPacket(chan, index, samples){
+  let e = pending.get(index);
+  if(!e){ e = {n:0}; pending.set(index, e); }
+  if(e[chan] === undefined) e.n++;
+  e[chan] = samples;
+  if(e.n === 4){ pending.delete(index); commitFrame(e); }
+  // Flush stale frames — a channel dropped a packet and it is never coming.
+  while(pending.size > 6){
+    const k = pending.keys().next().value;
+    const stale = pending.get(k);
+    pending.delete(k);
+    droppedPackets++;
+    commitFrame(stale);
+  }
+}
+
+function commitFrame(e){
+  for(let i=0;i<12;i++){
+    for(const c of CHANS){
+      const st = state[c];
+      const rawv = e[c] ? e[c][i] : 0;
+      const f = st.notch.step(st.hp.step(rawv));
+      st.ring[st.w] = f;
+      st.raw[st.w] = rawv;
+      st.w = (st.w+1) & (RING-1);
+      if(rec.on) recPush(c, rawv);
+      // Experiment block capture: filtered signal (both channels of a pair
+      // pass the identical filters, so cross-channel phase is preserved).
+      if(EXP.capturing && EXP.capI < EXP.capN) EXP.cap[c][EXP.capI] = f;
+    }
+    totalSamples++;
+    if(rec.on) rec.n++;
+    if(EXP.capturing){
+      EXP.capI++;
+      if(EXP.capI >= EXP.capN){
+        EXP.capturing = false;
+        // Analyse outside the BLE notification callback.
+        setTimeout(exOnBlockFull, 0);
+      }
+    }
+  }
+  if(totalSamples - lastFFTat >= HOP && totalSamples >= NFFT){
+    lastFFTat = totalSamples;
+    analyse();
+  }
+}
+
+const sleep = ms => new Promise(r=>setTimeout(r, ms));
+let battery = null;
+let reconnectAttempts = 0, reconnecting = false, wantDisconnect = false, connectedAt = 0;
+
+// Full GATT setup: retry the handshake, subscribe everything, start streaming.
+// Windows drops the first GATT handshake with the Muse depressingly often
+// ("Connection attempt failed"), so connect+service gets up to 5 tries with
+// cleanup and backoff. The short sleeps between subscriptions matter too:
+// Realtek adapters choke on rapid-fire startNotifications and drop the link
+// seconds later — which looks exactly like "pairs, then disconnects".
+async function establish(){
+  let svc = null, lastErr = null;
+  for(let attempt=1; attempt<=5 && !svc; attempt++){
+    try{
+      $('#status').textContent = attempt===1 ? 'connecting…' : `connecting… retry ${attempt}/5`;
+      const server = await device.gatt.connect();
+      svc = await server.getPrimaryService(MUSE_SERVICE);
+    }catch(e){
+      lastErr = e;
+      try{ device.gatt.disconnect(); }catch(e2){}
+      await sleep(300 + 500*attempt);
+    }
+  }
+  if(!svc) throw lastErr;
+
+  controlChar = await svc.getCharacteristic(UUID.control);
+  await controlChar.startNotifications();
+  await sleep(120);
+
+  for(const c of CHANS){
+    const ch = await svc.getCharacteristic(UUID[c]);
+    ch.addEventListener('characteristicvaluechanged', ev => {
+      const {index,samples} = decodeEEG(ev.target.value);
+      onChannelPacket(c, index, samples);
+    });
+    await ch.startNotifications();
+    await sleep(120);
+  }
+
+  try{
+    const tel = await svc.getCharacteristic(UUID.telemetry);
+    tel.addEventListener('characteristicvaluechanged', ev => {
+      const dv = ev.target.value;
+      battery = dv.getUint16(2,false)/512;
+    });
+    await tel.startNotifications();
+    await sleep(120);
+  }catch(e){ /* telemetry is optional */ }
+
+  // Halt, select preset, request status, start streaming.
+  await sendCmd('h');
+  await sendCmd(settings.preset);
+  await sendCmd('s');
+  await sendCmd('d');
+
+  connected = true;
+  connectedAt = Date.now();
+  $('#status').textContent = device.name || 'connected';
+  $('#status').className = 'on';
+  $('#btnConnect').textContent = 'Connected';
+  $('#btnConnect').disabled = true;
+  $('#btnDisc').disabled = false;
+}
+
+async function connect(){
+  if(!navigator.bluetooth){
+    toast('This browser has no Web Bluetooth. Use Chrome or Edge on desktop, over https:// or http://localhost.', true);
+    return;
+  }
+  try{
+    $('#status').textContent = 'requesting device…';
+    device = await navigator.bluetooth.requestDevice({
+      filters:[{namePrefix:'Muse'},{services:[MUSE_SERVICE]}],
+      optionalServices:[MUSE_SERVICE]
+    });
+    wantDisconnect = false;
+    reconnectAttempts = 0;
+    await establish();
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+    toast('Connected. If the traces stay flat, try preset p20 in Settings.');
+  }catch(err){
+    $('#status').textContent = 'disconnected';
+    const msg = err && err.message ? err.message : String(err);
+    if(err && err.name === 'NotFoundError'){
+      toast('No device picked. The headband must be on, not connected to the Muse phone app, and within a metre or so.', true);
+    }else if(/permissions? policy|disallowed/i.test(msg)){
+      toast('Bluetooth is BLOCKED in this viewer — the claude.ai copy and embedded previews can never connect. ' +
+        'On the PC, double-click the Muse Lab desktop shortcut and use the browser window it opens (localhost).', true);
+    }else{
+      toast('Connection failed after 5 attempts: ' + msg +
+        ' — Try: headband off/on, Windows Bluetooth off/on, band right next to the PC, check its charge.', true);
+    }
+  }
+}
+
+function onDisconnected(){
+  connected = false;
+  if(reconnecting) return;                       // establish() churns the link during retries
+  if(wantDisconnect){ finalDisconnect(); return; }
+  // A stable hour then a drop should not burn the retry budget:
+  if(Date.now() - connectedAt > 60000) reconnectAttempts = 0;
+  if(device && reconnectAttempts < 3){
+    // An unexpected drop right after connecting is usually a link glitch or
+    // a busy adapter, not intent — re-establish before giving up.
+    reconnectAttempts++;
+    reconnecting = true;
+    $('#status').textContent = `link dropped — reconnecting ${reconnectAttempts}/3…`;
+    $('#status').className = '';
+    setTimeout(async ()=>{
+      try{
+        await establish();
+        reconnecting = false;
+        toast('Link recovered.');
+      }catch(e){
+        reconnecting = false;
+        onDisconnected();
+      }
+    }, 800);
+    return;
+  }
+  finalDisconnect();
+}
+
+function finalDisconnect(){
+  connected = false;
+  $('#status').textContent = 'disconnected';
+  $('#status').className = '';
+  $('#btnConnect').textContent = 'Connect headband';
+  $('#btnConnect').disabled = false;
+  $('#btnDisc').disabled = true;
+  toast('Headband disconnected. If it keeps dropping right after connecting: charge the band, turn OFF Bluetooth speakers/earbuds (the RR360 especially), and try preset p20 in Settings.', true);
+}
+
+async function disconnect(){
+  if(simTimer){ clearInterval(simTimer); simTimer=null; $('#btnSim').textContent='Simulate'; }
+  wantDisconnect = true;
+  try{ await sendCmd('h'); }catch(e){}
+  if(device && device.gatt.connected) device.gatt.disconnect();
+  else finalDisconnect();
+}
+
+/* ============================================================
+   Simulator — synthetic EEG so the UI is usable without hardware
+   ============================================================ */
+let simPhase = 0, simIndex = 0;
+function simTick(){
+  const e = {n:4};
+  for(const c of CHANS){
+    const s = new Float32Array(12);
+    const frontal = (c==='af7'||c==='af8');
+    for(let i=0;i<12;i++){
+      const t = (simIndex*12+i)/FS;
+      // slow alpha waxing and waning, stronger frontally
+      const alphaEnv = 0.5 + 0.5*Math.sin(2*Math.PI*t/18);
+      let v = 0;
+      v += (frontal?18:26) * alphaEnv * Math.sin(2*Math.PI*10.2*t + simPhase);
+      v += 9  * Math.sin(2*Math.PI*6.1*t + 1.1);
+      v += 5  * Math.sin(2*Math.PI*18*t + 2.3);
+      v += 14 * Math.sin(2*Math.PI*2.2*t + 0.4);
+      v += 6  * (Math.random()*2-1);
+      if(settings.notch) v += 4*Math.sin(2*Math.PI*settings.notch*t);
+      // occasional blink on frontal channels
+      if(frontal && (t % 7) < 0.12) v += 90*Math.sin(Math.PI*((t%7)/0.12));
+      // Pipeline self-test: pretend entrainment is real. Injected only
+      // during stimulation blocks, with an interhemispheric lag so dwPLI
+      // (which ignores zero-lag) can see it.
+      if(EXP.simInject && EXP.capturing){
+        const cond = EXP.seq[EXP.cur];
+        if(cond === 'binaural' || cond === 'isochronic'){
+          const lag = (c==='af8'||c==='tp10') ? Math.PI/4 : 0;
+          v += 2.5*Math.sin(2*Math.PI*settings.exF0*t - lag);
+        }
+      }
+      s[i] = v;
+    }
+    e[c] = s;
+  }
+  simIndex++;
+  commitFrame(e);
+}
+
+function toggleSim(){
+  if(simTimer){
+    clearInterval(simTimer); simTimer=null;
+    $('#btnSim').textContent = 'Simulate';
+    $('#status').textContent = 'disconnected'; $('#status').className='';
+  }else{
+    simTimer = setInterval(simTick, 1000/(FS/12));
+    $('#btnSim').textContent = 'Stop simulation';
+    $('#status').textContent = 'simulated signal'; $('#status').className='on';
+    battery = 87;
+  }
+}
+
+/* ============================================================
+   Analysis — runs 4x/second
+   ============================================================ */
+let artifactNow = false;
+let bandHistory = [];       // {t, chan->band} for band CSV
+const traceLen = 600;       // 150 s of metric at 4 Hz
+const trace = { val:new Float32Array(traceLen), art:new Uint8Array(traceLen), i:0, n:0 };
+
+function analyse(){
+  const start = (state.tp9.w - NFFT + RING) & (RING-1);
+  artifactNow = false;
+
+  for(const c of CHANS){
+    const st = state[c];
+    // amplitude / artifact / railing checks over the analysis window
+    let peak=0, sum=0, sum2=0, railed=0;
+    for(let i=0;i<NFFT;i++){
+      const idx = (start+i)&(RING-1);
+      const v = st.ring[idx];
+      const r = st.raw[idx];
+      const a = Math.abs(v);
+      if(a>peak) peak=a;
+      sum += v; sum2 += v*v;
+      if(Math.abs(r) > 990) railed++;    // near the ±1000 µV rail
+    }
+    const mean = sum/NFFT;
+    st.rms = Math.sqrt(Math.max(0, sum2/NFFT - mean*mean));
+    st.railed = railed;
+    if(peak > settings.artifact) artifactNow = true;
+
+    st.quality = railed > NFFT*0.05 ? 'poor'
+               : st.rms < 0.4       ? 'poor'
+               : st.rms > 45        ? 'poor'
+               : st.rms > 18        ? 'fair'
+               : 'good';
+
+    psd(st.ring, start, st.spec);
+    st.band = bandPower(st.spec);
+  }
+
+  if(rec.on){
+    const row = {t:(Date.now()-rec.t0)/1000};
+    for(const c of CHANS) for(const b of BAND_NAMES) row[c+'_'+b] = state[c].band[b];
+    rec.bandRows.push(row);
+  }
+
+  updateMetric();
+}
+
+/* ============================================================
+   Neurofeedback
+   ============================================================ */
+const nf = {
+  running:false, calibrating:false,
+  t0:0, calEnd:0, calSamples:[],
+  baseMean:null, baseStd:null, threshold:null,
+  ema:null, rewardTicks:0, totalTicks:0, artTicks:0,
+  metricSum:0, metricN:0,
+  bandSum:{}, series:[],
+};
+for(const b of BAND_NAMES) nf.bandSum[b]=0;
+let nfBandN = 0;
+
+function currentMetric(){
+  const chans = settings.nfChan.split(',');
+  const num = settings.nfNum;
+  const den = settings.nfDen;
+  let n=0, d=0;
+  for(const c of chans){
+    const b = state[c].band;
+    n += b[num];
+    if(den === 'total') d += b.total;
+    else if(den) for(const part of den.split('+')) d += b[part];
+  }
+  if(!den) return n/chans.length;
+  return d > 1e-9 ? n/d : 0;
+}
+
+function updateMetric(){
+  const raw = currentMetric();
+  const dtPerTick = HOP/FS;                      // 0.25 s
+  const a = 1 - Math.exp(-dtPerTick/settings.nfTau);
+  nf.ema = nf.ema === null ? raw : nf.ema + a*(raw - nf.ema);
+
+  // running band averages for session summary
+  if(!artifactNow){
+    const chans = settings.nfChan.split(',');
+    for(const b of BAND_NAMES){
+      let s=0; for(const c of chans) s += state[c].band[b]/Math.max(1e-9,state[c].band.total);
+      nf.bandSum[b] += s/chans.length;
+    }
+    nfBandN++;
+  }
+
+  if(nf.calibrating){
+    if(!artifactNow) nf.calSamples.push(raw);
+    if(Date.now() >= nf.calEnd) finishCalibration();
+    $('#nfBase').textContent = `${Math.max(0,Math.ceil((nf.calEnd-Date.now())/1000))} s left`;
+  }
+
+  let rewarding = false;
+  if(nf.running && nf.threshold !== null){
+    nf.totalTicks++;
+    if(artifactNow){ nf.artTicks++; }
+    else{
+      rewarding = settings.nfDir === 'up' ? nf.ema > nf.threshold : nf.ema < nf.threshold;
+      if(rewarding) nf.rewardTicks++;
+      nf.metricSum += nf.ema; nf.metricN++;
+      nf.series.push(+nf.ema.toFixed(5));
+    }
+  }
+
+  trace.val[trace.i] = nf.ema;
+  trace.art[trace.i] = artifactNow?1:0;
+  trace.i = (trace.i+1) % traceLen;
+  trace.n = Math.min(trace.n+1, traceLen);
+
+  audioUpdate(rewarding);
+  nfUI(rewarding);
+}
+
+function startCalibration(){
+  nf.calibrating = true;
+  nf.calSamples = [];
+  nf.calEnd = Date.now() + 60000;
+  $('#btnCal').disabled = true;
+  $('#btnNf').disabled = true;
+  toast('Calibrating for 60 s — sit as you normally would, eyes open, and try not to move.');
+}
+
+function finishCalibration(){
+  nf.calibrating = false;
+  $('#btnCal').disabled = false;
+  const s = nf.calSamples;
+  if(s.length < 20){
+    $('#nfBase').textContent = 'failed';
+    toast('Calibration failed — almost every window was rejected as an artifact. Check electrode contact.', true);
+    return;
+  }
+  const mean = s.reduce((a,b)=>a+b,0)/s.length;
+  const varc = s.reduce((a,b)=>a+(b-mean)*(b-mean),0)/s.length;
+  nf.baseMean = mean; nf.baseStd = Math.sqrt(varc);
+  recomputeThreshold();
+  $('#btnNf').disabled = false;
+  toast(`Baseline set: ${mean.toFixed(3)} ± ${nf.baseStd.toFixed(3)}. Ready to train.`);
+}
+
+function recomputeThreshold(){
+  if(nf.baseMean === null) return;
+  const sign = settings.nfDir === 'up' ? 1 : -1;
+  nf.threshold = nf.baseMean + sign*settings.nfK*nf.baseStd;
+  $('#nfBase').textContent = nf.baseMean.toFixed(3);
+  $('#nfThr').textContent = nf.threshold.toFixed(3);
+}
+
+function startSession(){
+  nf.running = true;
+  nf.t0 = Date.now();
+  nf.rewardTicks = nf.totalTicks = nf.artTicks = 0;
+  nf.metricSum = nf.metricN = 0;
+  nf.series = [];
+  for(const b of BAND_NAMES) nf.bandSum[b]=0;
+  nfBandN = 0;
+  audioStart();
+  $('#btnNf').textContent = 'Stop session';
+  $('#btnNf').className = 'danger';
+}
+
+async function stopSession(){
+  nf.running = false;
+  audioStop();
+  $('#btnNf').textContent = 'Start session';
+  $('#btnNf').className = 'primary';
+  const dur = (Date.now()-nf.t0)/1000;
+  if(dur < 20 || nf.metricN < 10){ toast('Session too short to save.'); return; }
+  const bands = {};
+  for(const b of BAND_NAMES) bands[b] = nfBandN ? nf.bandSum[b]/nfBandN : 0;
+  const s = {
+    date: Date.now(),
+    duration: dur,
+    protocol: `${settings.nfNum}${settings.nfDen?'/'+settings.nfDen:''} @ ${settings.nfChan.toUpperCase()} ${settings.nfDir}`,
+    num:settings.nfNum, den:settings.nfDen, chans:settings.nfChan, dir:settings.nfDir,
+    k: settings.nfK, tau: settings.nfTau,
+    baseMean: nf.baseMean, baseStd: nf.baseStd, threshold: nf.threshold,
+    meanMetric: nf.metricSum/nf.metricN,
+    pctReward: 100*nf.rewardTicks/Math.max(1,nf.totalTicks-nf.artTicks),
+    artifactPct: 100*nf.artTicks/Math.max(1,nf.totalTicks),
+    alpha:bands.alpha, theta:bands.theta, beta:bands.beta, delta:bands.delta, gamma:bands.gamma,
+    series: downsample(nf.series, 600),
+  };
+  await dbPut(s);
+  toast(`Session saved — ${fmtTime(dur)}, ${s.pctReward.toFixed(0)}% in reward.`);
+  renderHistory();
+}
+
+function downsample(arr, maxN){
+  if(arr.length <= maxN) return Float32Array.from(arr);
+  const out = new Float32Array(maxN);
+  const step = arr.length/maxN;
+  for(let i=0;i<maxN;i++){
+    const a = Math.floor(i*step), b = Math.floor((i+1)*step);
+    let s=0; for(let j=a;j<b;j++) s+=arr[j];
+    out[i] = s/Math.max(1,b-a);
+  }
+  return out;
+}
+
+/* ============================================================
+   Audio feedback
+   ============================================================ */
+let ac=null, master=null, osc=null, noiseSrc=null, noiseGain=null, toneGain=null, lastChime=0;
+
+function audioStart(){
+  if(settings.nfSound === 'none') return;
+  if(!ac) ac = new (window.AudioContext||window.webkitAudioContext)();
+  if(ac.state === 'suspended') ac.resume();
+  audioStop();
+  master = ac.createGain(); master.gain.value = settings.nfVol; master.connect(ac.destination);
+
+  if(settings.nfSound === 'tone'){
+    osc = ac.createOscillator(); osc.type='sine'; osc.frequency.value = 216;
+    const osc2 = ac.createOscillator(); osc2.type='sine'; osc2.frequency.value = 324;
+    toneGain = ac.createGain(); toneGain.gain.value = 0;
+    osc.connect(toneGain); osc2.connect(toneGain); toneGain.connect(master);
+    osc.start(); osc2.start(); osc._partner = osc2;
+  } else if(settings.nfSound === 'noise'){
+    const len = ac.sampleRate*2;
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    let b0=0,b1=0,b2=0;
+    for(let i=0;i<len;i++){                     // rough pink noise, easier on the ear
+      const w = Math.random()*2-1;
+      b0 = 0.99765*b0 + w*0.0990460;
+      b1 = 0.96300*b1 + w*0.2965164;
+      b2 = 0.57000*b2 + w*1.0526913;
+      d[i] = (b0+b1+b2+w*0.1848)*0.12;
+    }
+    noiseSrc = ac.createBufferSource(); noiseSrc.buffer=buf; noiseSrc.loop=true;
+    noiseGain = ac.createGain(); noiseGain.gain.value = 0.6;
+    noiseSrc.connect(noiseGain); noiseGain.connect(master); noiseSrc.start();
+  }
+}
+
+function audioStop(){
+  try{
+    if(osc){ osc.stop(); if(osc._partner) osc._partner.stop(); osc=null; }
+    if(noiseSrc){ noiseSrc.stop(); noiseSrc=null; }
+    if(master){ master.disconnect(); master=null; }
+  }catch(e){}
+}
+
+function audioUpdate(rewarding){
+  if(!ac || !master || !nf.running) return;
+  master.gain.value = settings.nfVol;
+  const margin = nf.threshold ? clamp(Math.abs(nf.ema-nf.threshold)/Math.max(1e-6,nf.baseStd), 0, 2)/2 : 0;
+  const t = ac.currentTime;
+  if(settings.nfSound==='tone' && toneGain){
+    toneGain.gain.linearRampToValueAtTime(rewarding ? 0.15+0.45*margin : 0, t+0.25);
+  } else if(settings.nfSound==='noise' && noiseGain){
+    noiseGain.gain.linearRampToValueAtTime(rewarding ? Math.max(0.02, 0.5-0.48*margin) : 0.6, t+0.25);
+  } else if(settings.nfSound==='chime' && rewarding && Date.now()-lastChime > 2000){
+    lastChime = Date.now();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type='sine'; o.frequency.value=880;
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(0.5,t+0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.9);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t+1);
+  }
+}
+
+/* ============================================================
+   IndexedDB
+   ============================================================ */
+let db = null;
+function dbOpen(){
+  return new Promise((res,rej)=>{
+    const r = indexedDB.open('museLab',1);
+    r.onupgradeneeded = e => {
+      const d = e.target.result;
+      if(!d.objectStoreNames.contains('sessions'))
+        d.createObjectStore('sessions',{keyPath:'id',autoIncrement:true});
+    };
+    r.onsuccess = e => { db = e.target.result; res(db); };
+    r.onerror = e => rej(e);
+  });
+}
+function dbPut(obj){
+  return new Promise((res,rej)=>{
+    const tx = db.transaction('sessions','readwrite');
+    tx.objectStore('sessions').add(obj);
+    tx.oncomplete = res; tx.onerror = rej;
+  });
+}
+function dbAll(){
+  return new Promise((res,rej)=>{
+    const tx = db.transaction('sessions','readonly');
+    const req = tx.objectStore('sessions').getAll();
+    req.onsuccess = ()=>res(req.result.sort((a,b)=>a.date-b.date));
+    req.onerror = rej;
+  });
+}
+function dbClear(){
+  return new Promise((res,rej)=>{
+    const tx = db.transaction('sessions','readwrite');
+    tx.objectStore('sessions').clear();
+    tx.oncomplete = res; tx.onerror = rej;
+  });
+}
+
+/* ============================================================
+   Canvas helpers
+   ============================================================ */
+function fitCanvas(cv){
+  const dpr = window.devicePixelRatio||1;
+  const w = cv.clientWidth, h = cv.clientHeight || parseInt(cv.getAttribute('height'));
+  if(cv.width !== Math.round(w*dpr) || cv.height !== Math.round(h*dpr)){
+    cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+  }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  return {ctx,w,h};
+}
+
+/* ============================================================
+   Rendering
+   ============================================================ */
+function drawScope(){
+  const cv = $('#scope'); if(!cv.clientWidth) return;
+  const {ctx,w,h} = fitCanvas(cv);
+  const lanes = CHANS.length, laneH = h/lanes;
+  const span = FS*5;                      // 5 s
+  const scale = settings.scale;
+
+  CHANS.forEach((c,li)=>{
+    const st = state[c];
+    const y0 = li*laneH, mid = y0 + laneH/2;
+
+    ctx.strokeStyle = '#1e252e'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(w,mid); ctx.stroke();
+    if(li>0){ ctx.strokeStyle='#232b35'; ctx.beginPath(); ctx.moveTo(0,y0); ctx.lineTo(w,y0); ctx.stroke(); }
+
+    ctx.fillStyle = CHAN_COLOR[c];
+    ctx.font = '600 10px ui-monospace,monospace';
+    ctx.fillText(CHAN_LABEL[c], 8, y0+14);
+    ctx.fillStyle = '#7d8899';
+    ctx.fillText(`${st.rms.toFixed(1)} µV rms`, 46, y0+14);
+    ctx.fillText(`±${scale}`, w-34, y0+14);
+
+    ctx.strokeStyle = CHAN_COLOR[c]; ctx.lineWidth = 1;
+    ctx.beginPath();
+    const per = span/w;
+    const amp = laneH/2 - 8;
+    if(per <= 2){
+      // Roughly one sample per pixel — a plain polyline, otherwise a
+      // min/max envelope degenerates into disconnected dots.
+      for(let s=0;s<span;s++){
+        const idx = (st.w - span + s + RING*2) & (RING-1);
+        const x = (s/span)*w;
+        const y = mid - clamp(st.ring[idx]/scale,-1,1)*amp;
+        s===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+      }
+    }else{
+      for(let x=0;x<w;x++){
+        const a = Math.floor(x*per);
+        let b = Math.floor((x+1)*per);
+        if(b<=a) b=a+1;
+        let lo=Infinity, hi=-Infinity;
+        for(let s=a;s<b;s++){
+          const v = st.ring[(st.w - span + s + RING*2) & (RING-1)];
+          if(v<lo) lo=v;
+          if(v>hi) hi=v;
+        }
+        const yl = mid - clamp(lo/scale,-1,1)*amp;
+        const yh = mid - clamp(hi/scale,-1,1)*amp;
+        ctx.moveTo(x+0.5, yl); ctx.lineTo(x+0.5, yh);
+      }
+    }
+    ctx.stroke();
+  });
+}
+
+function drawSpectrum(){
+  const cv = $('#spec'); if(!cv.clientWidth) return;
+  const {ctx,w,h} = fitCanvas(cv);
+  const pad = {l:38,r:8,t:8,b:22};
+  const pw = w-pad.l-pad.r, ph = h-pad.t-pad.b;
+  const fMax = 45;
+
+  // band shading
+  for(const name of BAND_NAMES){
+    const [lo,hi] = BANDS[name];
+    const x0 = pad.l + (lo/fMax)*pw, x1 = pad.l + (hi/fMax)*pw;
+    ctx.fillStyle = 'rgba(255,255,255,0.022)';
+    if(BAND_NAMES.indexOf(name)%2===0) ctx.fillRect(x0,pad.t,x1-x0,ph);
+    ctx.fillStyle = '#5b6675'; ctx.font='9px ui-monospace,monospace';
+    ctx.fillText(name, x0+2, h-8);
+  }
+  // log y axis, 0.1 .. 1000 µV²/Hz
+  const yOf = v => { const lv = Math.log10(Math.max(v,0.1)); return pad.t + ph - ((lv+1)/4)*ph; };
+  ctx.strokeStyle='#232b35'; ctx.fillStyle='#5b6675'; ctx.font='9px ui-monospace,monospace';
+  for(const dec of [0.1,1,10,100,1000]){
+    const y = yOf(dec);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
+    ctx.fillText(String(dec), 4, y+3);
+  }
+
+  for(const c of CHANS){
+    const sp = state[c].spec;
+    ctx.strokeStyle = CHAN_COLOR[c]; ctx.lineWidth=1.4; ctx.beginPath();
+    for(let k=1;k<=fMax;k++){
+      const x = pad.l + (k/fMax)*pw, y = yOf(sp[k]);
+      k===1 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawBands(){
+  const cv = $('#bands'); if(!cv.clientWidth) return;
+  const {ctx,w,h} = fitCanvas(cv);
+  const pad = {l:8,r:8,t:8,b:22};
+  const groups = BAND_NAMES.length;
+  const gw = (w-pad.l-pad.r)/groups;
+  const bw = (gw-10)/CHANS.length;
+  const ph = h-pad.t-pad.b;
+
+  BAND_NAMES.forEach((band,gi)=>{
+    const gx = pad.l + gi*gw;
+    CHANS.forEach((c,ci)=>{
+      const b = state[c].band;
+      const rel = b.total>1e-9 ? b[band]/b.total : 0;
+      const bh = clamp(rel,0,1)*ph;
+      ctx.fillStyle = CHAN_COLOR[c];
+      ctx.globalAlpha = 0.85;
+      ctx.fillRect(gx+5+ci*bw, pad.t+ph-bh, bw-2, bh);
+      ctx.globalAlpha = 1;
+    });
+    ctx.fillStyle='#7d8899'; ctx.font='10px ui-monospace,monospace';
+    const label = `${band} ${BANDS[band][0]}–${BANDS[band][1]}`;
+    ctx.fillText(label, gx+5, h-8);
+  });
+  ctx.strokeStyle='#232b35';
+  for(const frac of [0.25,0.5,0.75]){
+    const y = pad.t+ph-frac*ph;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
+    ctx.fillStyle='#5b6675'; ctx.font='9px ui-monospace,monospace';
+    ctx.fillText((frac*100)+'%', w-30, y-2);
+  }
+}
+
+function drawOrb(rewarding){
+  const cv = $('#nfOrb'); if(!cv.clientWidth) return;
+  const {ctx,w,h} = fitCanvas(cv);
+  const cx=w/2, cy=h/2;
+  const margin = (nf.threshold!==null && nf.baseStd)
+    ? clamp((settings.nfDir==='up' ? nf.ema-nf.threshold : nf.threshold-nf.ema)/Math.max(1e-6,nf.baseStd*2), -1, 1)
+    : 0;
+  const rBase = Math.min(w,h)*0.18;
+  const r = rBase*(1 + 0.6*clamp(margin,-0.6,1));
+
+  ctx.strokeStyle='#2a323d'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(cx,cy,rBase,0,7); ctx.stroke();
+
+  const col = artifactNow ? '#6b7280' : rewarding ? '#3fb950' : '#4a5563';
+  const g = ctx.createRadialGradient(cx,cy,0,cx,cy,Math.max(1,r));
+  g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cx,cy,Math.max(1,r),0,7); ctx.fill();
+
+  ctx.strokeStyle=col; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(cx,cy,Math.max(1,r),0,7); ctx.stroke();
+
+  ctx.fillStyle='#7d8899'; ctx.font='10px ui-monospace,monospace'; ctx.textAlign='center';
+  ctx.fillText(artifactNow ? 'ARTIFACT — window rejected'
+              : rewarding ? 'IN REWARD' : 'below threshold', cx, h-12);
+  ctx.textAlign='left';
+}
+
+function drawTrace(){
+  const cv = $('#nfTrace'); if(!cv.clientWidth) return;
+  const {ctx,w,h} = fitCanvas(cv);
+  if(trace.n < 4) return;
+  const pad = {l:44,r:8,t:10,b:18};
+  const pw=w-pad.l-pad.r, ph=h-pad.t-pad.b;
+
+  let lo=1e9, hi=-1e9;
+  for(let i=0;i<trace.n;i++){
+    const v = trace.val[(trace.i-trace.n+i+traceLen*2)%traceLen];
+    if(v<lo) lo=v; if(v>hi) hi=v;
+  }
+  if(nf.threshold!==null){ lo=Math.min(lo,nf.threshold); hi=Math.max(hi,nf.threshold); }
+  const span = Math.max(1e-6, hi-lo); lo-=span*0.12; hi+=span*0.12;
+  const yOf = v => pad.t + ph - ((v-lo)/(hi-lo))*ph;
+
+  // artifact bands
+  ctx.fillStyle='rgba(125,136,153,0.18)';
+  for(let i=0;i<trace.n;i++){
+    if(trace.art[(trace.i-trace.n+i+traceLen*2)%traceLen]){
+      ctx.fillRect(pad.l + (i/trace.n)*pw, pad.t, Math.max(1,pw/trace.n), ph);
+    }
+  }
+  // threshold
+  if(nf.threshold!==null){
+    ctx.strokeStyle='#d29922'; ctx.setLineDash([4,4]); ctx.lineWidth=1;
+    const y=yOf(nf.threshold);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // metric
+  ctx.strokeStyle='#4fd1c5'; ctx.lineWidth=1.6; ctx.beginPath();
+  for(let i=0;i<trace.n;i++){
+    const v = trace.val[(trace.i-trace.n+i+traceLen*2)%traceLen];
+    const x = pad.l + (i/trace.n)*pw, y = yOf(v);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle='#5b6675'; ctx.font='9px ui-monospace,monospace';
+  ctx.fillText(hi.toFixed(3), 4, pad.t+8);
+  ctx.fillText(lo.toFixed(3), 4, pad.t+ph);
+  ctx.fillText(`${(trace.n*HOP/FS).toFixed(0)} s`, w-34, h-6);
+}
+
+function nfUI(rewarding){
+  $('#nfVal').textContent = nf.ema===null ? '—' : nf.ema.toFixed(3);
+  if(nf.running){
+    const denom = Math.max(1, nf.totalTicks-nf.artTicks);
+    $('#nfPct').textContent = (100*nf.rewardTicks/denom).toFixed(0)+'%';
+    $('#nfArt').textContent = nf.artTicks;
+    $('#nfTime').textContent = fmtTime((Date.now()-nf.t0)/1000);
+    const margin = nf.threshold ? clamp(Math.abs(nf.ema-nf.threshold)/Math.max(1e-6,nf.baseStd),0,2)/2 : 0;
+    $('#rewardBar').style.width = (rewarding ? 20+80*margin : 0)+'%';
+  }
+}
+
+function drawChips(){
+  const parts = [];
+  if(battery!==null) parts.push(`<span class="chip">BATT <b>${battery.toFixed(0)}%</b></span>`);
+  for(const c of CHANS){
+    const st = state[c];
+    parts.push(`<span class="chip q-${st.quality}">${CHAN_LABEL[c]} <b>${st.rms.toFixed(0)}µV</b></span>`);
+  }
+  if(rec.on) parts.push(`<span class="chip q-poor">● REC ${fmtTime((Date.now()-rec.t0)/1000)}</span>`);
+  $('#chips').innerHTML = parts.join('');
+}
+
+let activeView = 'live';
+let lastRewarding = false;
+function frame(){
+  drawChips();
+  if(activeView==='live'){ drawScope(); drawSpectrum(); drawBands(); }
+  if(activeView==='nf'){
+    const rewarding = nf.running && !artifactNow && nf.threshold!==null &&
+      (settings.nfDir==='up' ? nf.ema>nf.threshold : nf.ema<nf.threshold);
+    drawOrb(rewarding); drawTrace();
+    if(nf.running) nfUI(rewarding);
+  }
+  if(activeView==='exp') exProgressUI();
+  if(rec.on){
+    $('#recDur').textContent = fmtTime((Date.now()-rec.t0)/1000);
+    $('#recN').textContent = rec.n.toLocaleString();
+    $('#recDrop').textContent = droppedPackets;
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ============================================================
+   History rendering
+   ============================================================ */
+let sessions = [];
+let selectedSession = null;
+
+async function renderHistory(){
+  sessions = await dbAll();
+  const tb = $('#histRows');
+  tb.innerHTML = sessions.map((s,i)=>`
+    <tr data-i="${i}">
+      <td>${new Date(s.date).toLocaleString()}</td>
+      <td>${fmtTime(s.duration)}</td>
+      <td style="font-family:var(--mono);font-size:11px">${s.protocol}</td>
+      <td>${s.meanMetric.toFixed(3)}</td>
+      <td>${s.threshold===null?'—':s.threshold.toFixed(3)}</td>
+      <td><b>${s.pctReward.toFixed(0)}%</b></td>
+      <td>${s.artifactPct.toFixed(0)}%</td>
+      <td><button data-del="${s.id}" style="padding:2px 8px;font-size:11px">del</button></td>
+    </tr>`).join('');
+  $('#histEmpty').style.display = sessions.length ? 'none' : 'block';
+  drawHistChart();
+}
+
+function drawHistChart(){
+  const cv = $('#histChart'); if(!cv.clientWidth) return;
+  const {ctx,w,h} = fitCanvas(cv);
+  const key = $('#histMetric').value;
+  if(sessions.length < 1){
+    ctx.fillStyle='#5b6675'; ctx.font='12px system-ui';
+    ctx.fillText('Record a neurofeedback session and it will appear here.', 12, h/2);
+    return;
+  }
+  const pad={l:46,r:10,t:12,b:26}, pw=w-pad.l-pad.r, ph=h-pad.t-pad.b;
+  const vals = sessions.map(s=>s[key]||0);
+  let lo=Math.min(...vals), hi=Math.max(...vals);
+  if(hi-lo < 1e-6){ hi=lo+1; lo=Math.max(0,lo-1); }
+  const pad2=(hi-lo)*0.15; lo-=pad2; hi+=pad2;
+  const yOf = v => pad.t+ph-((v-lo)/(hi-lo))*ph;
+  const xOf = i => sessions.length===1 ? pad.l+pw/2 : pad.l+(i/(sessions.length-1))*pw;
+
+  ctx.strokeStyle='#232b35'; ctx.fillStyle='#5b6675'; ctx.font='9px ui-monospace,monospace';
+  for(let g=0;g<=4;g++){
+    const v = lo+(hi-lo)*g/4, y=yOf(v);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
+    ctx.fillText(v.toFixed(1), 4, y+3);
+  }
+  // linear trend line
+  if(sessions.length>2){
+    const n=vals.length; let sx=0,sy=0,sxy=0,sxx=0;
+    vals.forEach((v,i)=>{ sx+=i; sy+=v; sxy+=i*v; sxx+=i*i; });
+    const slope=(n*sxy-sx*sy)/Math.max(1e-9,(n*sxx-sx*sx)), icept=(sy-slope*sx)/n;
+    ctx.strokeStyle='#d29922'; ctx.setLineDash([5,4]); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(xOf(0),yOf(icept)); ctx.lineTo(xOf(n-1),yOf(icept+slope*(n-1))); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.strokeStyle='#4fd1c5'; ctx.lineWidth=2; ctx.beginPath();
+  vals.forEach((v,i)=>{ const x=xOf(i),y=yOf(v); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
+  ctx.stroke();
+  ctx.fillStyle='#4fd1c5';
+  vals.forEach((v,i)=>{ ctx.beginPath(); ctx.arc(xOf(i),yOf(v),3.5,0,7); ctx.fill(); });
+
+  ctx.fillStyle='#5b6675'; ctx.font='9px ui-monospace,monospace';
+  ctx.fillText(new Date(sessions[0].date).toLocaleDateString(), pad.l, h-8);
+  if(sessions.length>1){
+    const t = new Date(sessions[sessions.length-1].date).toLocaleDateString();
+    ctx.fillText(t, w-pad.r-ctx.measureText(t).width, h-8);
+  }
+}
+
+function drawHistDetail(){
+  const cv = $('#histDetail'); if(!cv.clientWidth || !selectedSession) return;
+  const {ctx,w,h} = fitCanvas(cv);
+  const s = selectedSession, ser = s.series;
+  if(!ser || !ser.length) return;
+  const pad={l:46,r:10,t:12,b:22}, pw=w-pad.l-pad.r, ph=h-pad.t-pad.b;
+  let lo=Infinity,hi=-Infinity;
+  for(const v of ser){ if(v<lo)lo=v; if(v>hi)hi=v; }
+  if(s.threshold!==null){ lo=Math.min(lo,s.threshold); hi=Math.max(hi,s.threshold); }
+  const sp=Math.max(1e-6,hi-lo); lo-=sp*0.1; hi+=sp*0.1;
+  const yOf=v=>pad.t+ph-((v-lo)/(hi-lo))*ph;
+
+  if(s.threshold!==null){
+    ctx.strokeStyle='#d29922'; ctx.setLineDash([4,4]);
+    const y=yOf(s.threshold); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.strokeStyle='#4fd1c5'; ctx.lineWidth=1.6; ctx.beginPath();
+  for(let i=0;i<ser.length;i++){
+    const x=pad.l+(i/(ser.length-1))*pw, y=yOf(ser[i]);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.fillStyle='#5b6675'; ctx.font='9px ui-monospace,monospace';
+  ctx.fillText(hi.toFixed(3),4,pad.t+8);
+  ctx.fillText(lo.toFixed(3),4,pad.t+ph);
+  ctx.fillText(`${s.protocol} — ${fmtTime(s.duration)}`, pad.l, h-6);
+}
+
+/* ============================================================
+   CSV export
+   ============================================================ */
+function download(name, text, type){
+  const blob = new Blob([text], {type: type||'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=name; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1000);
+}
+function stamp(){ return new Date().toISOString().replace(/[:.]/g,'-').slice(0,19); }
+
+function exportRaw(){
+  const cols = {};
+  for(const c of CHANS) cols[c] = recConcat(c);
+  const n = Math.min(...CHANS.map(c=>cols[c].length));
+  const lines = ['time_s,TP9,AF7,AF8,TP10'];
+  for(let i=0;i<n;i++){
+    lines.push(`${(i/FS).toFixed(6)},${cols.tp9[i].toFixed(3)},${cols.af7[i].toFixed(3)},${cols.af8[i].toFixed(3)},${cols.tp10[i].toFixed(3)}`);
+  }
+  download(`muse-raw-${stamp()}.csv`, lines.join('\n'));
+}
+
+function exportBands(){
+  if(!rec.bandRows.length){ toast('No band data recorded.', true); return; }
+  const keys = Object.keys(rec.bandRows[0]);
+  const lines = [keys.join(',')];
+  for(const r of rec.bandRows) lines.push(keys.map(k=>typeof r[k]==='number'?r[k].toFixed(4):r[k]).join(','));
+  download(`muse-bands-${stamp()}.csv`, lines.join('\n'));
+}
+
+/* ============================================================
+   Entrainment experiment
+   Stimulus generation, block scheduler, per-block analysis.
+   All maths comes from experiment-analysis.js (XA) — the file
+   validated by test-analysis.html. If it failed to load, the
+   tab refuses to run rather than guessing.
+   ============================================================ */
+const EX_CONDS = ['binaural','isochronic','pure','silence'];
+
+const STIM = {
+  ctx:null, master:null, nodes:[],
+  ensure(){
+    if(!this.ctx) this.ctx = new (window.AudioContext||window.webkitAudioContext)();
+    if(this.ctx.state === 'suspended') this.ctx.resume().catch(()=>{});
+  },
+  start(cond){
+    this.stop();
+    if(cond === 'silence') return;
+    this.ensure();
+    const ctx = this.ctx, t = ctx.currentTime;
+    const master = ctx.createGain();
+    master.gain.setValueAtTime(0.0001, t);
+    master.gain.linearRampToValueAtTime(clamp(settings.exVol,0,1), t+0.08);
+    master.connect(ctx.destination);
+    this.master = master;
+    const fc = settings.exCarrier, d = settings.exF0;
+    if(cond === 'binaural'){
+      // TRUE stereo split — one oscillator per ear via a channel merger.
+      // (The neurofeedback tone path mixes to mono; it must not be reused here.)
+      const merger = ctx.createChannelMerger(2);
+      const L = ctx.createOscillator(); L.type='sine'; L.frequency.value = fc;
+      const R = ctx.createOscillator(); R.type='sine'; R.frequency.value = fc + d;
+      L.connect(merger,0,0); R.connect(merger,0,1);
+      merger.connect(master);
+      L.start(); R.start();
+      this.nodes = [L,R];
+    }else if(cond === 'isochronic'){
+      // Amplitude-modulated tone, identical in both ears: the positive
+      // control — this MUST produce a steady-state response if the
+      // measurement chain works at all.
+      const osc = ctx.createOscillator(); osc.type='sine'; osc.frequency.value = fc;
+      const am  = ctx.createGain(); am.gain.value = 0;
+      const lfo = ctx.createOscillator(); lfo.type='sine'; lfo.frequency.value = d;
+      const dep = ctx.createGain(); dep.gain.value = 0.5;
+      const dc  = ctx.createConstantSource(); dc.offset.value = 0.5;
+      lfo.connect(dep); dep.connect(am.gain); dc.connect(am.gain);
+      osc.connect(am); am.connect(master);
+      osc.start(); lfo.start(); dc.start();
+      this.nodes = [osc,lfo,dc];
+    }else if(cond === 'pure'){
+      const osc = ctx.createOscillator(); osc.type='sine'; osc.frequency.value = fc;
+      osc.connect(master); osc.start();
+      this.nodes = [osc];
+    }
+  },
+  stop(){
+    if(this.master){
+      const m = this.master, ctx = this.ctx;
+      try{
+        const t = ctx.currentTime;
+        m.gain.cancelScheduledValues(t);
+        m.gain.setValueAtTime(Math.max(0.0001, m.gain.value), t);
+        m.gain.linearRampToValueAtTime(0.0001, t+0.06);
+      }catch(e){}
+      setTimeout(()=>{ try{ m.disconnect(); }catch(e){} }, 150);
+      this.master = null;
+    }
+    for(const n of this.nodes){ try{ n.stop(this.ctx.currentTime + 0.1); }catch(e){} }
+    this.nodes = [];
+  },
+  stereoCheck(){
+    this.stop(); this.ensure();
+    const ctx = this.ctx, t = ctx.currentTime;
+    const merger = ctx.createChannelMerger(2);
+    const g = ctx.createGain(); g.gain.value = clamp(settings.exVol,0,1);
+    merger.connect(g); g.connect(ctx.destination);
+    const L = ctx.createOscillator(); L.frequency.value = 330; L.connect(merger,0,0);
+    const R = ctx.createOscillator(); R.frequency.value = 880; R.connect(merger,0,1);
+    L.start(t);     L.stop(t+0.8);
+    R.start(t+1.1); R.stop(t+1.9);
+    setTimeout(()=>{ try{ g.disconnect(); }catch(e){} }, 2300);
+    toast('LOW tone = LEFT ear only, then HIGH tone = RIGHT ear only. Anything else and channel separation is broken — fix that before running.');
+  }
+};
+
+const EXP = {
+  running:false, capturing:false,
+  seq:[], cur:-1, phase:'idle',
+  cap:null, capI:0, capN:0,
+  leadT:null, restT:null, restUntil:0,
+  markers:[], results:[],
+  simInject:false, _recCtl:false,
+};
+
+function exMasked(){ return settings.exBlind && EXP.running; }
+function exRecClick(){ EXP._recCtl = true; $('#btnRec').click(); EXP._recCtl = false; }
+
+function exSetRunUI(on){
+  $('#exStart').disabled = on;
+  $('#exAbort').disabled = !on;
+  for(const id of ['exF0','exCarrier','exBlock','exRest','exReps','exBlind',
+                   'exC-binaural','exC-isochronic','exC-pure','exC-silence','exStereo','exPrevStop']){
+    const el = document.getElementById(id);
+    if(el) el.disabled = on;
+  }
+  document.querySelectorAll('.exPrev').forEach(b => b.disabled = on);
+}
+
+function exStartRun(){
+  if(EXP.running) return;
+  if(typeof XA === 'undefined'){
+    toast('experiment-analysis.js did not load — serve the whole muse-lab folder (Muse Lab.bat does), not index.html alone.', true);
+    return;
+  }
+  if(!connected && !simTimer){ toast('Connect the headband or start Simulate first.', true); return; }
+  const enabled = settings.exConds.split(',');
+  const conds = EX_CONDS.filter(c => enabled.includes(c));
+  if(!conds.length){ toast('Enable at least one condition.', true); return; }
+  const seq = [];
+  for(const c of conds) for(let i=0;i<settings.exReps;i++) seq.push(c);
+  for(let i=seq.length-1;i>0;i--){        // Fisher–Yates
+    const j = Math.floor(Math.random()*(i+1));
+    const tmp = seq[i]; seq[i] = seq[j]; seq[j] = tmp;
+  }
+  Object.assign(EXP, {seq, cur:-1, results:[], markers:[], running:true, phase:'starting'});
+  if(rec.on) exRecClick();   // stop whatever was recording…
+  exRecClick();              // …and start fresh so markers share the raw CSV's t=0
+  exSetRunUI(true);
+  renderExp();
+  exNextBlock();
+}
+
+function exNextBlock(){
+  if(!EXP.running) return;
+  EXP.cur++;
+  if(EXP.cur >= EXP.seq.length){ exEndRun(false); return; }
+  const cond = EXP.seq[EXP.cur];
+  STIM.start(cond);
+  EXP.phase = 'lead-in';
+  // 2 s of stimulus before capture starts, so onset transients and the
+  // orienting response stay out of the analysed window.
+  EXP.leadT = setTimeout(()=>{
+    if(!EXP.running) return;
+    EXP.capN = Math.round(settings.exBlock*FS);
+    EXP.cap = {};
+    for(const c of CHANS) EXP.cap[c] = new Float32Array(EXP.capN);
+    EXP.capI = 0;
+    EXP.markers.push({block:EXP.cur, cond, startN:rec.n});
+    EXP.phase = 'capturing';
+    EXP.capturing = true;
+  }, 2000);
+}
+
+function exOnBlockFull(){
+  if(!EXP.running) return;
+  STIM.stop();
+  const mark = EXP.markers[EXP.markers.length-1];
+  mark.endN = rec.n;
+  EXP.phase = 'analysing';
+  const res = exAnalyzeBlock(EXP.cap, EXP.seq[EXP.cur]);
+  res.block = EXP.cur;
+  EXP.results.push(res);
+  EXP.cap = null;
+  renderExp();
+  if(EXP.cur+1 >= EXP.seq.length){ exEndRun(false); return; }
+  EXP.phase = 'rest';
+  EXP.restUntil = Date.now() + settings.exRest*1000;
+  EXP.restT = setTimeout(exNextBlock, settings.exRest*1000);
+}
+
+function exAnalyzeBlock(cap, cond){
+  const f0 = settings.exF0;
+  const rej = {thresh: settings.artifact, frac: 0.02};
+  const out = {cond, f0, snr:{}, pairs:{}, err:null};
+  for(const c of CHANS){
+    try{
+      const r = XA.welchPSD(cap[c], 4096, {reject:rej});
+      out.snr[c] = {snr: XA.peakSNR(r.psd, r.df, f0).snr, nSeg:r.nSeg, nRej:r.nRej};
+    }catch(e){ out.snr[c] = null; out.err = String(e.message||e); }
+  }
+  for(const pair of [['frontal','af7','af8'], ['temporal','tp9','tp10']]){
+    try{
+      const c2 = XA.connectivity(cap[pair[1]], cap[pair[2]], 4096, {reject:rej});
+      const k = Math.round(f0/c2.df);
+      out.pairs[pair[0]] = {dwpli:c2.dwpli[k], icoh:c2.icoh[k], coh:c2.coh[k], nSeg:c2.nSeg, nRej:c2.nRej};
+    }catch(e){ out.pairs[pair[0]] = {err:String(e.message||e)}; }
+  }
+  return out;
+}
+
+function exEndRun(aborted){
+  if(!EXP.running) return;
+  EXP.running = false; EXP.capturing = false;
+  EXP.phase = aborted ? 'aborted' : 'done';
+  clearTimeout(EXP.leadT); clearTimeout(EXP.restT);
+  STIM.stop();
+  if(rec.on) exRecClick();
+  exSetRunUI(false);
+  $('#exCsvEvents').disabled = !EXP.markers.some(m=>m.endN!==undefined);
+  $('#exJson').disabled = !EXP.results.length;
+  renderExp();
+  toast(aborted ? 'Run aborted — partial results kept.'
+                : 'Run complete. Export events CSV + run JSON here; raw CSV from the Live tab.');
+}
+
+function fmtPairCell(p, mask){
+  if(mask) return '•••';
+  if(!p) return '—';
+  if(p.err) return `<span style="color:var(--warn)" title="${p.err}">n/a</span>`;
+  return p.dwpli.toFixed(3);
+}
+
+function renderExp(){
+  const mask = exMasked();
+  $('#exRows').innerHTML = EXP.results.map(r=>{
+    let rejTot=0, segTot=0;
+    for(const c of CHANS){ if(r.snr[c]){ rejTot += r.snr[c].nRej; segTot += r.snr[c].nSeg + r.snr[c].nRej; } }
+    const icohTxt = mask ? '•••' :
+      `${r.pairs.frontal && !r.pairs.frontal.err ? r.pairs.frontal.icoh.toFixed(3) : '—'} / ` +
+      `${r.pairs.temporal && !r.pairs.temporal.err ? r.pairs.temporal.icoh.toFixed(3) : '—'}`;
+    const snrTxt = mask ? '•••' :
+      CHANS.map(c => r.snr[c] ? r.snr[c].snr.toFixed(1) : '—').join(' / ');
+    return `<tr><td>${r.block+1}</td><td>${mask ? '•••' : r.cond}</td>
+      <td>${fmtPairCell(r.pairs.frontal, mask)}</td><td>${fmtPairCell(r.pairs.temporal, mask)}</td>
+      <td>${icohTxt}</td><td>${snrTxt}</td>
+      <td>${segTot ? (100*rejTot/segTot).toFixed(0)+'%' : '—'}</td></tr>`;
+  }).join('');
+  $('#exEmpty').style.display = EXP.results.length ? 'none' : 'block';
+
+  const wrap = $('#exSummaryWrap');
+  if(mask || !EXP.results.length){ wrap.style.display = 'none'; return; }
+  const by = {};
+  for(const r of EXP.results) (by[r.cond] = by[r.cond] || []).push(r);
+  const ms = arr => {
+    const v = arr.filter(x => x !== null && isFinite(x));
+    if(!v.length) return '—';
+    const m = v.reduce((a,b)=>a+b,0)/v.length;
+    if(v.length < 2) return m.toFixed(3);
+    const sd = Math.sqrt(v.reduce((a,b)=>a+(b-m)*(b-m),0)/(v.length-1));
+    return `${m.toFixed(3)} ± ${sd.toFixed(3)}`;
+  };
+  $('#exSumRows').innerHTML = EX_CONDS.filter(c=>by[c]).map(cond=>{
+    const rs = by[cond];
+    const fd = rs.map(r => r.pairs.frontal  && !r.pairs.frontal.err  ? r.pairs.frontal.dwpli  : null);
+    const td = rs.map(r => r.pairs.temporal && !r.pairs.temporal.err ? r.pairs.temporal.dwpli : null);
+    const fs = rs.map(r => r.snr.af7 && r.snr.af8   ? (r.snr.af7.snr + r.snr.af8.snr)/2   : null);
+    const ts = rs.map(r => r.snr.tp9 && r.snr.tp10  ? (r.snr.tp9.snr + r.snr.tp10.snr)/2  : null);
+    return `<tr><td>${cond}</td><td>${rs.length}</td><td>${ms(fd)}</td><td>${ms(td)}</td><td>${ms(fs)}</td><td>${ms(ts)}</td></tr>`;
+  }).join('');
+  wrap.style.display = 'block';
+}
+
+function exProgressUI(){
+  $('#exBlkN').textContent = EXP.seq.length ? `${Math.min(EXP.cur+1, EXP.seq.length)}/${EXP.seq.length}` : '—';
+  $('#exCond').textContent = EXP.running && EXP.cur >= 0 ? (exMasked() ? '•••' : EXP.seq[EXP.cur]) : '—';
+  $('#exPhase').textContent = EXP.phase;
+  let left = '—';
+  if(EXP.running){
+    if(EXP.phase === 'capturing')    left = fmtTime(Math.max(0, (EXP.capN - EXP.capI)/FS));
+    else if(EXP.phase === 'rest')    left = fmtTime(Math.max(0, (EXP.restUntil - Date.now())/1000));
+    else if(EXP.phase === 'lead-in') left = 'lead-in';
+  }
+  $('#exLeft').textContent = left;
+}
+
+function exExportEvents(){
+  const lines = ['block,condition,start_s,end_s'];
+  for(const m of EXP.markers){
+    if(m.endN === undefined) continue;
+    lines.push(`${m.block},${m.cond},${(m.startN/FS).toFixed(3)},${(m.endN/FS).toFixed(3)}`);
+  }
+  download(`muse-events-${stamp()}.csv`, lines.join('\n'));
+}
+
+function exExportJson(){
+  download(`muse-run-${stamp()}.json`, JSON.stringify({
+    date: new Date().toISOString(),
+    f0: settings.exF0, carrier: settings.exCarrier,
+    blockLen: settings.exBlock, rest: settings.exRest,
+    artifactThresh: settings.artifact,
+    seq: EXP.seq, simInject: EXP.simInject,
+    markers: EXP.markers, results: EXP.results,
+  }, null, 2), 'application/json');
+}
+
+/* ============================================================
+   Wiring
+   ============================================================ */
+function bindSetting(sel, key, cb, isNum){
+  const el = $(sel);
+  if(!el) return;
+  el.value = settings[key];
+  el.addEventListener('change', ()=>{
+    settings[key] = isNum ? parseFloat(el.value) : el.value;
+    saveSettings();
+    if(cb) cb();
+  });
+  el.addEventListener('input', ()=>{
+    settings[key] = isNum ? parseFloat(el.value) : el.value;
+    if(cb) cb();
+  });
+}
+
+$('#btnConnect').onclick = connect;
+$('#btnSim').onclick = toggleSim;
+$('#btnDisc').onclick = disconnect;
+
+document.querySelectorAll('.tab').forEach(t=>{
+  t.onclick = ()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    activeView = t.dataset.v;
+    $('#v-'+activeView).classList.add('active');
+    if(activeView==='hist'){ renderHistory(); }
+  };
+});
+
+// Recording
+$('#btnRec').onclick = ()=>{
+  if(EXP.running && !EXP._recCtl){
+    toast('Recording is managed by the running experiment — abort the run first.', true);
+    return;
+  }
+  if(rec.on){
+    rec.on = false;
+    $('#btnRec').textContent = 'Start recording';
+    $('#btnRec').className = 'primary';
+    $('#btnMark').disabled = true;
+    $('#btnCsvRaw').disabled = rec.n === 0;
+    $('#btnCsvBand').disabled = rec.bandRows.length === 0;
+    $('#btnCsvMarks').disabled = rec.marks.length === 0;
+    toast(`Recording stopped — ${rec.n.toLocaleString()} samples per channel, ${rec.marks.length} marks.`);
+  }else{
+    recReset();
+    droppedPackets = 0;
+    rec.on = true; rec.t0 = Date.now();
+    $('#btnRec').textContent = 'Stop recording';
+    $('#btnRec').className = 'danger';
+    $('#btnMark').disabled = false;
+    $('#btnCsvRaw').disabled = true;
+    $('#btnCsvBand').disabled = true;
+    $('#btnCsvMarks').disabled = true;
+    $('#recMarks').textContent = '0';
+  }
+};
+$('#btnMark').onclick = ()=>{
+  if(!rec.on) return;
+  const label = 'M' + (rec.marks.length+1);
+  rec.marks.push({label, n: rec.n});
+  $('#recMarks').textContent = rec.marks.length;
+  toast(`${label} at ${(rec.n/FS).toFixed(1)} s`);
+};
+$('#btnCsvMarks').onclick = ()=>{
+  if(!rec.marks.length){ toast('No marks recorded.', true); return; }
+  const lines = ['label,time_s'];
+  for(const m of rec.marks) lines.push(`${m.label},${(m.n/FS).toFixed(3)}`);
+  download(`muse-marks-${stamp()}.csv`, lines.join('\n'));
+};
+$('#btnCsvRaw').onclick = exportRaw;
+$('#btnCsvBand').onclick = exportBands;
+
+// Neurofeedback controls
+bindSetting('#nfNum','nfNum');
+bindSetting('#nfDen','nfDen');
+bindSetting('#nfChan','nfChan');
+bindSetting('#nfDir','nfDir', recomputeThreshold);
+bindSetting('#nfSound','nfSound', ()=>{ if(nf.running){ audioStop(); audioStart(); } });
+bindSetting('#nfK','nfK', ()=>{ $('#nfKv').textContent=(settings.nfK>0?'+':'')+settings.nfK.toFixed(1); recomputeThreshold(); }, true);
+bindSetting('#nfTau','nfTau', ()=>{ $('#nfTauV').textContent=settings.nfTau.toFixed(2); }, true);
+bindSetting('#nfVol','nfVol', null, true);
+$('#nfKv').textContent = (settings.nfK>0?'+':'')+settings.nfK.toFixed(1);
+$('#nfTauV').textContent = settings.nfTau.toFixed(2);
+
+$('#btnCal').onclick = startCalibration;
+$('#btnNf').onclick = ()=> nf.running ? stopSession() : startSession();
+
+// Experiment controls
+bindSetting('#exF0','exF0', null, true);
+bindSetting('#exCarrier','exCarrier', null, true);
+bindSetting('#exVol','exVol', null, true);
+bindSetting('#exBlock','exBlock', null, true);
+bindSetting('#exRest','exRest', null, true);
+bindSetting('#exReps','exReps', null, true);
+for(const c of EX_CONDS){
+  const el = document.getElementById('exC-'+c);
+  el.checked = settings.exConds.split(',').includes(c);
+  el.addEventListener('change', ()=>{
+    settings.exConds = EX_CONDS.filter(k => document.getElementById('exC-'+k).checked).join(',');
+    saveSettings();
+  });
+}
+$('#exBlind').checked = !!settings.exBlind;
+$('#exBlind').addEventListener('change', ()=>{ settings.exBlind = $('#exBlind').checked; saveSettings(); });
+$('#exInject').addEventListener('change', ()=>{ EXP.simInject = $('#exInject').checked; });
+$('#exStart').onclick = exStartRun;
+$('#exAbort').onclick = ()=> exEndRun(true);
+$('#exStereo').onclick = ()=> STIM.stereoCheck();
+document.querySelectorAll('.exPrev').forEach(b => b.onclick = ()=>{ if(!EXP.running) STIM.start(b.dataset.c); });
+$('#exPrevStop').onclick = ()=>{ if(!EXP.running) STIM.stop(); };
+$('#exCsvEvents').onclick = exExportEvents;
+$('#exJson').onclick = exExportJson;
+
+// Settings
+bindSetting('#setNotch','notch', rebuildFilters, true);
+bindSetting('#setHp','hp', rebuildFilters, true);
+bindSetting('#setArt','artifact', null, true);
+bindSetting('#setScale','scale', null, true);
+bindSetting('#setPreset','preset');
+
+// History
+$('#histMetric').onchange = drawHistChart;
+// Two-tap confirm instead of confirm(): modal dialogs are silently blocked
+// inside the claude.ai artifact sandbox, which would make this button dead there.
+let clearArmed = 0;
+$('#btnClear').onclick = async ()=>{
+  if(Date.now() - clearArmed > 4000){
+    clearArmed = Date.now();
+    $('#btnClear').textContent = 'Tap again to delete ALL';
+    setTimeout(()=>{ $('#btnClear').textContent = 'Delete all'; clearArmed = 0; }, 4000);
+    return;
+  }
+  clearArmed = 0;
+  $('#btnClear').textContent = 'Delete all';
+  await dbClear(); selectedSession=null; $('#histDetailCard').style.display='none'; renderHistory();
+  toast('All sessions deleted.');
+};
+$('#btnExportAll').onclick = async ()=>{
+  const all = await dbAll();
+  const plain = all.map(s=>Object.assign({}, s, {series: Array.from(s.series||[])}));
+  download(`muse-sessions-${stamp()}.json`, JSON.stringify(plain,null,2), 'application/json');
+};
+$('#histRows').onclick = async ev=>{
+  const del = ev.target.dataset.del;
+  if(del){
+    ev.stopPropagation();
+    await new Promise((res,rej)=>{
+      const tx = db.transaction('sessions','readwrite');
+      tx.objectStore('sessions').delete(Number(del));
+      tx.oncomplete=res; tx.onerror=rej;
+    });
+    renderHistory();
+    return;
+  }
+  const tr = ev.target.closest('tr'); if(!tr) return;
+  document.querySelectorAll('#histRows tr').forEach(r=>r.classList.remove('sel'));
+  tr.classList.add('sel');
+  selectedSession = sessions[Number(tr.dataset.i)];
+  $('#histDetailCard').style.display='block';
+  drawHistDetail();
+};
+
+window.addEventListener('resize', ()=>{
+  if(activeView==='hist'){ drawHistChart(); drawHistDetail(); }
+});
+
+// Boot
+(async ()=>{
+  try{ await dbOpen(); await renderHistory(); }
+  catch(e){ toast('Local storage unavailable — sessions will not be saved.', true); }
+  if(!navigator.bluetooth){
+    toast('Web Bluetooth is not available here. Use Chrome or Edge on desktop, served over https:// or http://localhost. You can still press Simulate to explore the interface.', true);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+
+<script>
+/* ---- claude.ai artifact adaptations ---- */
+(function(){
+  const orig = window.download;
+  async function saveVia(dl, name, text){
+    try{
+      await dl.save({filename:name, data:text});
+      toast('Saved ' + name);
+    }catch(err){
+      const code = err && err.code;
+      if(code === 'extension_not_enabled'){
+        try{
+          await dl.save({filename:name + '.txt', data:text});
+          toast('Saved as ' + name + '.txt — rename to drop the .txt if you like');
+        }catch(e2){
+          if(!e2 || e2.code !== 'declined') toast('Could not save: ' + ((e2&&e2.message)||e2), true);
+        }
+      }else if(code !== 'declined'){
+        toast('Could not save: ' + ((err&&err.message)||err), true);
+      }
+    }
+  }
+  window.download = function(name, text, type){
+    const c = window.claude;
+    if(!c || typeof c.use !== 'function'){ orig(name, text, type); return; }
+    c.use('downloads').then(dl => { dl ? saveVia(dl, name, text) : orig(name, text, type); })
+                      .catch(()=> orig(name, text, type));
+  };
+  // Make the viewer limitation visible up front, not only on failure.
+  if(!navigator.bluetooth || !navigator.permissions){ /* toast already handles missing API */ }
+  try{
+    document.getElementById('btnConnect').title =
+      'Bluetooth is blocked on the claude.ai copy — connect from the Muse Lab desktop shortcut on the PC.';
+  }catch(e){}
+})();
+</script>
+<style>
+/* ---- small screens ---- */
+@media (max-width:700px){
+  #top{padding:8px 10px;gap:8px}
+  #tabs{overflow-x:auto;scrollbar-width:none}
+  .tab{padding:10px 12px;white-space:nowrap}
+  #main{padding:10px}
+  button{padding:9px 13px}
+  #scope{height:260px}
+  .big{font-size:22px}
+  th,td{padding:6px;font-size:11px}
+}
+</style>
+</body>
+</html>
